@@ -1,0 +1,6 @@
+app:
+  env: inter
+
+database:
+  host: inter-db.internal
+  pool_size: 10

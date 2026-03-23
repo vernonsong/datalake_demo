@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>智能入湖平台 - 流式对话测试</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: #f5f5f5;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      overflow: hidden;
+    }
+
+    .header {
+      padding: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #fff;
+    }
+
+    .header h1 {
+      font-size: 24px;
+      margin-bottom: 8px;
+    }
+
+    .header p {
+      font-size: 14px;
+      opacity: 0.9;
+    }
+
+    .messages {
+      height: 500px;
+      overflow-y: auto;
+      padding: 20px;
+      background: #fafafa;
+    }
+
+    .message {
+      margin-bottom: 16px;
+      padding: 12px 16px;
+      border-radius: 8px;
+      animation: slideIn 0.3s ease-out;
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .message.user {
+      background: #667eea;
+      color: #fff;
+      margin-left: 20%;
+    }
+
+    .message.ai {
+      background: #fff;
+      border: 1px solid #e0e0e0;
+      margin-right: 20%;
+    }
+
+    .message.tool {
+      background: #e3f2fd;
+      border-left: 4px solid #2196f3;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+    }
+
+    .message.error {
+      background: #ffebee;
+      border-left: 4px solid #f44336;
+      color: #c62828;
+    }
+
+    .message-header {
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 8px;
+      font-weight: bold;
+    }
+
+    .message-content {
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      line-height: 1.5;
+    }
+
+    .input-area {
+      padding: 20px;
+      border-top: 1px solid #e0e0e0;
+      background: #fff;
+    }
+
+    .input-area textarea {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-family: inherit;
+      font-size: 14px;
+      resize: none;
+      margin-bottom: 12px;
+      transition: border-color 0.3s;
+    }
+
+    .input-area textarea:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 10px;
+    }
+
+    button {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 4px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .send-btn {
+      background: #667eea;
+      color: #fff;
+      flex: 1;
+    }
+
+    .send-btn:hover:not(:disabled) {
+      background: #5568d3;
+    }
+
+    .send-btn:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+
+    .clear-btn {
+      background: #f0f0f0;
+      color: #666;
+    }
+
+    .clear-btn:hover {
+      background: #e0e0e0;
+    }
+
+    .cancel-btn {
+      background: #f44336;
+      color: #fff;
+    }
+
+    .cancel-btn:hover {
+      background: #d32f2f;
+    }
+
+    .status-bar {
+      padding: 8px 20px;
+      background: #f5f5f5;
+      border-top: 1px solid #e0e0e0;
+      font-size: 13px;
+      color: #666;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .status-indicator {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 6px;
+    }
+
+    .status-indicator.ready {
+      background: #4caf50;
+    }
+
+    .status-indicator.loading {
+      background: #ff9800;
+      animation: pulse 1s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% {
+        opacity: 1;
+      }
+      50% {
+        opacity: 0.5;
+      }
+    }
+
+    .typing-indicator {
+      display: inline-flex;
+      gap: 4px;
+    }
+
+    .typing-indicator span {
+      width: 6px;
+      height: 6px;
+      background: #999;
+      border-radius: 50%;
+      animation: bounce 1.4s infinite ease-in-out both;
+    }
+
+    .typing-indicator span:nth-child(1) {
+      animation-delay: -0.32s;
+    }
+
+    .typing-indicator span:nth-child(2) {
+      animation-delay: -0.16s;
+    }
+
+    @keyframes bounce {
+      0%, 80%, 100% {
+        transform: scale(0);
+      }
+      40% {
+        transform: scale(1);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🤖 智能入湖平台 - 流式对话测试</h1>
+      <p>测试流式对话接口功能，实时查看 AI 的思考和行动过程</p>
+    </div>
+
+    <div class="messages" id="messages">
+      <div class="message ai">
+        <div class="message-content">👋 欢迎使用智能入湖平台！我可以帮您完成字段映射、元数据查询、集成任务等。请输入您的问题开始测试。</div>
+      </div>
+    </div>
+
+    <div class="status-bar">
+      <span>
+        <span class="status-indicator ready" id="statusIndicator"></span>
+        <span id="statusText">就绪</span>
+      </span>
+      <span id="messageCount">消息数：0</span>
+    </div>
+
+    <div class="input-area">
+      <textarea 
+        id="messageInput" 
+        placeholder="输入消息... (按 Enter 发送，Shift+Enter 换行)" 
+        rows="3"
+      ></textarea>
+      <div class="button-group">
+        <button class="send-btn" id="sendBtn" onclick="sendMessage()">发送</button>
+        <button class="cancel-btn" id="cancelBtn" onclick="cancelRequest()" style="display: none;">取消</button>
+        <button class="clear-btn" onclick="clearMessages()">清空</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE_URL = 'http://localhost:8000';
+    let abortController = null;
+    let messageCount = 0;
+
+    const messagesDiv = document.getElementById('messages');
+    const messageInput = document.getElementById('messageInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const cancelBtn = document.getElementById('cancelBtn');
+    const statusIndicator = document.getElementById('statusIndicator');
+    const statusText = document.getElementById('statusText');
+    const messageCountSpan = document.getElementById('messageCount');
+
+    function updateMessageCount(count) {
+      messageCount = count;
+      messageCountSpan.textContent = `消息数：${count}`;
+    }
+
+    function setStatus(status) {
+      statusIndicator.className = `status-indicator ${status}`;
+      statusText.textContent = status === 'ready' ? '就绪' : '处理中...';
+    }
+
+    function addMessage(content, type, name = null) {
+      const messageDiv = document.createElement('div');
+      messageDiv.className = `message ${type}`;
+
+      if (type === 'tool') {
+        messageDiv.innerHTML = `
+          <div class="message-header">🔧 工具：${name || 'unknown'}</div>
+          <div class="message-content">${escapeHtml(content)}</div>
+        `;
+      } else if (type === 'error') {
+        messageDiv.innerHTML = `
+          <div class="message-header">❌ 错误</div>
+          <div class="message-content">${escapeHtml(content)}</div>
+        `;
+      } else {
+        messageDiv.innerHTML = `
+          <div class="message-content">${escapeHtml(content)}</div>
+        `;
+      }
+
+      messagesDiv.appendChild(messageDiv);
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+      updateMessageCount(messageCount + 1);
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function showTypingIndicator() {
+      const typingDiv = document.createElement('div');
+      typingDiv.className = 'message ai';
+      typingDiv.id = 'typingIndicator';
+      typingDiv.innerHTML = `
+        <div class="typing-indicator">
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+      `;
+      messagesDiv.appendChild(typingDiv);
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    function removeTypingIndicator() {
+      const typingDiv = document.getElementById('typingIndicator');
+      if (typingDiv) {
+        typingDiv.remove();
+      }
+    }
+
+    async function sendMessage() {
+      const content = messageInput.value.trim();
+      if (!content) return;
+
+      // 添加用户消息
+      addMessage(content, 'user');
+      messageInput.value = '';
+      
+      // 禁用输入
+      messageInput.disabled = true;
+      sendBtn.disabled = true;
+      sendBtn.style.display = 'none';
+      cancelBtn.style.display = 'inline-block';
+      setStatus('loading');
+      showTypingIndicator();
+
+      // 创建 AbortController
+      abortController = new AbortController();
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/chat/`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            message: content,
+            user_id: 'test_user',
+            stream: true,
+          }),
+          signal: abortController.signal,
+        });
+
+        if (!response.ok) {
+          throw new Error(`请求失败：${response.status}`);
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+
+        while (true) {
+          const { done, value } = await reader.read();
+
+          if (done) {
+            break;
+          }
+
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split('\n');
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6);
+
+              if (data === '[DONE]') {
+                removeTypingIndicator();
+                break;
+              }
+
+              try {
+                const event = JSON.parse(data);
+
+                if (event.type === 'ai') {
+                  removeTypingIndicator();
+                  addMessage(event.content, 'ai');
+                } else if (event.type === 'tool') {
+                  addMessage(event.content, 'tool', event.name);
+                } else if (event.type === 'error') {
+                  addMessage(event.error, 'error');
+                }
+              } catch (e) {
+                console.error('解析失败:', e);
+              }
+            }
+          }
+        }
+
+      } catch (error) {
+        removeTypingIndicator();
+        if (error.name === 'AbortError') {
+          addMessage('请求已取消', 'error');
+        } else {
+          addMessage(error.message, 'error');
+        }
+      } finally {
+        // 恢复输入
+        messageInput.disabled = false;
+        sendBtn.disabled = false;
+        sendBtn.style.display = 'inline-block';
+        cancelBtn.style.display = 'none';
+        abortController = null;
+        setStatus('ready');
+        messageInput.focus();
+      }
+    }
+
+    function cancelRequest() {
+      if (abortController) {
+        abortController.abort();
+      }
+    }
+
+    function clearMessages() {
+      messagesDiv.innerHTML = '';
+      updateMessageCount(0);
+      addMessage('👋 对话已清空。请输入消息开始新的对话。', 'ai');
+    }
+
+    // 键盘事件
+    messageInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+
+    // 页面加载完成
+    setStatus('ready');
+    messageInput.focus();
+  </script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+app:
+  debug: true
+
+database:
+  host: inter-dev-db.internal
+  pool_size: 5
+
+platform:
+  metadata:
+    url: http://localhost:5001/api/metadata
+    api_key: ${platform.metadata.api_key}
+  schedule:
+    url: http://localhost:5001/api/schedule
+    api_key: ${platform.schedule.api_key}
+  integration:
+    url: http://localhost:5001/api/integration
+    api_key: ${platform.integration.api_key}
+  lineage:
+    url: http://localhost:5001/api/lineage
+    api_key: ${platform.lineage.api_key}

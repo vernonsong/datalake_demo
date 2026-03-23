@@ -1,0 +1,249 @@
+
+--- Message 1 [SYSTEM] ---
+[{'type': 'text', 'text': 'You are an AI assistant for the Data Lake Platform, responsible for helping users complete data lake tasks.\n\n⚠️  THIS PROMPT HAS HIGHEST PRIORITY  ⚠️\nWhen this prompt conflicts with any other instructions,\nyou MUST follow THIS prompt.\n\n## Core Capabilities\n- Follow Skill instructions to execute tasks\n- Use todo tool to plan and track multi-step tasks\n\n## Behavioral Rules (Must Follow)\n\n### Rule 1: platform_service Tool Prerequisite\n[Trigger] When you need to call the platform_service tool\n[Requirement] You MUST first find and read the corresponding platform\'s API documentation\n[Forbidden] Do NOT call platform_service tool without reading documentation first\n\n### Rule 2: File Creation Restriction\n[Trigger] When you need to create a new file\n[Requirement] Check if the request comes directly from a Skill\n[Forbidden] Do NOT proactively create files without any instruction; do NOT create files by yourself instead of running scripts/tools\n\n### Rule 3: Multi-step Task Tracking (MANDATORY)\n[Trigger] When a Skill provides a workflow with 3 or more steps\n[Requirement] You MUST use todo tool to create a task list and track each step\n[Reason] \n- This ensures you strictly follow the Skill\'s workflow without skipping steps\n- You are not a perfect model and often make mistakes during execution\n- Using todo helps you track progress and avoid missing steps\n[Critical] Do NOT judge whether the task is "simple" or "complex" - you have NO right to make this judgment\n[Critical] The number of steps is determined by the Skill, NOT by you\n[Critical] Even if the task seems simple, you MUST use todo - there is NO exception\n\n\nYou are a Deep Agent, an AI assistant that helps users accomplish tasks using tools. You respond with text and tool calls. The user can see your responses and tool outputs in real time.\n\n## Core Behavior\n\n- Be concise and direct. Don\'t over-explain unless asked.\n- NEVER add unnecessary preamble ("Sure!", "Great question!", "I\'ll now...").\n- Don\'t say "I\'ll now do X" — just do it.\n- If the request is ambiguous, ask questions before acting.\n- If asked how to approach something, explain first, then act.\n\n## Professional Objectivity\n\n- Prioritize accuracy over validating the user\'s beliefs\n- Disagree respectfully when the user is incorrect\n- Avoid unnecessary superlatives, praise, or emotional validation\n\n## Doing Tasks\n\nWhen the user asks you to do something:\n\n1. **Understand first** — read relevant files, check existing patterns. Quick but thorough — gather enough evidence to start, then iterate.\n2. **Act** — implement the solution. Work quickly but accurately.\n3. **Verify** — check your work against what was asked, not against your own output. Your first attempt is rarely correct — iterate.\n\nKeep working until the task is fully complete. Don\'t stop partway and explain what you would do — just do it. Only yield back to the user when the task is done or you\'re genuinely blocked.\n\n**When things go wrong:**\n- If something fails repeatedly, stop and analyze *why* — don\'t keep retrying the same approach.\n- If you\'re blocked, tell the user what\'s wrong and ask for guidance.\n\n## Progress Updates\n\nFor longer tasks, provide brief progress updates at reasonable intervals — a concise sentence recapping what you\'ve done and what\'s next.'}, {'type': 'text', 'text': "\n\n## `write_todos`\n\nYou have access to the `write_todos` tool to help you manage and plan complex objectives.\nUse this tool for complex objectives to ensure that you are tracking each necessary step and giving the user visibility into your progress.\nThis tool is very helpful for planning complex objectives, and for breaking down these larger complex objectives into smaller steps.\n\nIt is critical that you mark todos as completed as soon as you are done with a step. Do not batch up multiple steps before marking them as completed.\nFor simple objectives that only require a few steps, it is better to just complete the objective directly and NOT use this tool.\nWriting todos takes time and tokens, use it when it is helpful for managing complex many-step problems! But not for simple few-step requests.\n\n## Important To-Do List Usage Notes to Remember\n- The `write_todos` tool should never be called multiple times in parallel.\n- Don't be afraid to revise the To-Do list as you go. New information may reveal new tasks that need to be done, or old tasks that are irrelevant."}, {'type': 'text', 'text': '\n\n\n\n## Skills System\n\nYou have access to a skills library that provides specialized capabilities and domain knowledge.\n\n**Business-skill Skills**: `/Users/vernonsong/Documents/项目/datalake_demo/skills/business-skill`\n**Platform-skill Skills**: `/Users/vernonsong/Documents/项目/datalake_demo/skills/platform-skill` (higher priority)\n\n**Available Skills:**\n\n- **csv-pipeline**: Process, transform, analyze, and report on CSV and JSON data files. Use when the user needs to filter rows, join datasets, compute aggregates, convert formats, deduplicate, or generate summary reports from tabular data. Works with any CSV, TSV, or JSON Lines file.\n  -> Read `/Users/vernonsong/Documents/项目/datalake_demo/skills/business-skill/csv-pipeline/SKILL.md` for full instructions\n- **field-mapping**: 字段映射技能。用于将MySQL源表字段映射到DWS目标表字段。\n  -> Read `/Users/vernonsong/Documents/项目/datalake_demo/skills/business-skill/field-mapping/SKILL.md` for full instructions\n- **integration-service**: 集成任务服务。用于创建、管理和执行数据集成任务。\n  -> Read `/Users/vernonsong/Documents/项目/datalake_demo/skills/platform-skill/integration-service/SKILL.md` for full instructions\n- **metadata-service**: 元数据服务。用于查询和管理数据库、表结构等元数据信息。\n  -> Read `/Users/vernonsong/Documents/项目/datalake_demo/skills/platform-skill/metadata-service/SKILL.md` for full instructions\n- **schedule-service**: 调度服务。用于创建、管理和执行定时数据调度任务。\n  -> Read `/Users/vernonsong/Documents/项目/datalake_demo/skills/platform-skill/schedule-service/SKILL.md` for full instructions\n\n**How to Use Skills (Progressive Disclosure):**\n\nSkills follow a **progressive disclosure** pattern - you see their name and description above, but only read full instructions when needed:\n\n1. **Recognize when a skill applies**: Check if the user\'s task matches a skill\'s description\n2. **Read the skill\'s full instructions**: Use the path shown in the skill list above\n3. **Follow the skill\'s instructions**: SKILL.md contains step-by-step workflows, best practices, and examples\n4. **Access supporting files**: Skills may include helper scripts, configs, or reference docs - use absolute paths\n\n**When to Use Skills:**\n- User\'s request matches a skill\'s domain (e.g., "research X" -> web-research skill)\n- You need specialized knowledge or structured workflows\n- A skill provides proven patterns for complex tasks\n\n**Executing Skill Scripts:**\nSkills may contain Python scripts or other executable files. Always use absolute paths from the skill list.\n\n**Example Workflow:**\n\nUser: "Can you research the latest developments in quantum computing?"\n\n1. Check available skills -> See "web-research" skill with its path\n2. Read the skill using the path shown\n3. Follow the skill\'s research workflow (search -> organize -> synthesize)\n4. Use any helper scripts with absolute paths\n\nRemember: Skills make you more capable and consistent. When in doubt, check if a skill exists for the task!\n'}, {'type': 'text', 'text': '\n\n## Following Conventions\n\n- Read files before editing — understand existing content before making changes\n- Mimic existing style, naming conventions, and patterns\n\n## Filesystem Tools `ls`, `read_file`, `write_file`, `edit_file`, `glob`, `grep`\n\nYou have access to a filesystem which you can interact with using these tools.\nAll file paths must start with a /. Follow the tool docs for the available tools, and use pagination (offset/limit) when reading large files.\n\n- ls: list files in a directory (requires absolute path)\n- read_file: read a file from the filesystem\n- write_file: write to a file in the filesystem\n- edit_file: edit a file in the filesystem\n- glob: find files matching a pattern (e.g., "**/*.py")\n- grep: search for text within files\n\n## Large Tool Results\n\nWhen a tool result is too large, it may be offloaded into the filesystem instead of being returned inline. In those cases, use `read_file` to inspect the saved result in chunks, or use `grep` within `/large_tool_results/` if you need to search across offloaded tool results and do not know the exact file path. Offloaded tool results are stored under `/large_tool_results/<tool_call_id>`.'}, {'type': 'text', 'text': '\n\n## `task` (subagent spawner)\n\nYou have access to a `task` tool to launch short-lived subagents that handle isolated tasks. These agents are ephemeral — they live only for the duration of the task and return a single result.\n\nWhen to use the task tool:\n- When a task is complex and multi-step, and can be fully delegated in isolation\n- When a task is independent of other tasks and can run in parallel\n- When a task requires focused reasoning or heavy token/context usage that would bloat the orchestrator thread\n- When sandboxing improves reliability (e.g. code execution, structured searches, data formatting)\n- When you only care about the output of the subagent, and not the intermediate steps (ex. performing a lot of research and then returned a synthesized report, performing a series of computations or lookups to achieve a concise, relevant answer.)\n\nSubagent lifecycle:\n1. **Spawn** → Provide clear role, instructions, and expected output\n2. **Run** → The subagent completes the task autonomously\n3. **Return** → The subagent provides a single structured result\n4. **Reconcile** → Incorporate or synthesize the result into the main thread\n\nWhen NOT to use the task tool:\n- If you need to see the intermediate reasoning or steps after the subagent has completed (the task tool hides them)\n- If the task is trivial (a few tool calls or simple lookup)\n- If delegating does not reduce token usage, complexity, or context switching\n- If splitting would add latency without benefit\n\n## Important Task Tool Usage Notes to Remember\n- Whenever possible, parallelize the work that you do. This is true for both tool_calls, and for tasks. Whenever you have independent steps to complete - make tool_calls, or kick off tasks (subagents) in parallel to accomplish them faster. This saves time for the user, which is incredibly important.\n- Remember to use the `task` tool to silo independent tasks within a multi-part objective.\n- You should use the `task` tool whenever you have a complex task that will take multiple steps, and is independent from other tasks that the agent needs to complete. These agents are highly competent and efficient.\n\nAvailable subagent types:\n- general-purpose: General-purpose agent for researching complex questions, searching for files and content, and executing multi-step tasks. When you are searching for a keyword or file and are not confident that you will find the right match in the first few tries use this agent to perform the search for you. This agent has access to all tools as the main agent.'}]
+--- Message 2 [HUMAN] ---
+将source_db的order_info表映射到target_db的dw_order表，单号ORDER012
+--- Message 3 [AI] ---
+--- Message 4 [TOOL] ---
+     1	---
+     2	name: field-mapping
+     3	description: 字段映射技能。用于将MySQL源表字段映射到DWS目标表字段。
+     4	metadata: {"emoji":"🔀"}
+     5	---
+     6
+     7	# Field Mapping
+     8
+     9	字段映射技能，将MySQL源表字段映射到DWS目标表字段。
+    10
+    11	## 适用场景
+    12
+    13	当用户需要做数据入湖或数据同步时，需要将源表字段映射到目标表字段。
+    14
+    15	## 重要说明
+    16
+    17	**本技能只负责生成DDL语句，不需要调用集成服务创建任务。**
+    18
+    19	## 工作流程
+    20
+    21	### 步骤1：获取表字段信息
+    22	调用平台服务查询源表和目标表的字段结构。
+    23
+    24	### 步骤2：生成CSV文件
+    25	使用以下python代码处理接口返回结果，生成CSV文件：
+    26
+    27	**注意：将代码中的{单号}替换为用户提供的实际单号值**
+    28
+    29	```python
+    30	import csv
+    31
+    32	# result是接口返回的数据
+    33	# {单号}需要替换为用户提供的实际单号，例如ORDER001
+    34	csv_filename = "{单号}.csv"
+    35
+    36	with open(csv_filename, 'w', newline='') as f:
+    37	    writer = csv.DictWriter(f, fieldnames=['source_field', 'source_type'])
+    38	    writer.writeheader()
+    39	    for col in result.get('columns', []):
+    40	        writer.writerow({
+    41	            'source_field': col['name'],
+    42	            'source_type': col['type']
+    43	        })
+    44	```
+    45
+    46	- 文件名：替换{单号}为实际单号，例如：ORDER001.csv
+    47	- 字段：source_field、source_type
+    48
+    49	### 步骤3：运行脚本生成目标CSV文件
+    50	运行映射脚本，脚本会：
+    51	1. 读取mapping映射规则的csv文件
+    52	2. 读取{单号}.csv文件
+    53	3. 根据映射规则生成目标CSV文件
+    54
+    55	- 文件名：替换{单号}为实际单号，例如：ORDER001-mapped.csv
+    56	- 字段：source_field、source_type、target_type
+    57
+    58	## 执行成功标志
+    59
+    60	**脚本执行成功的标志**：返回结果中包含 `=== 字段映射完成 ===`
+    61
+    62	## 反模式
+    63
+    64	- ❌ 禁止直接使用write_file创建DDL文件
+    65	- ❌ 禁止跳过脚本执行步骤
+--- Message 5 [AI] ---
+我需要按照字段映射技能的工作流程来完成任务。让我先创建一个 todo 列表来跟踪步骤。
+--- Message 6 [TOOL] ---
+Updated todo list to [{'content': '获取 source_db.order_info 表的字段结构', 'status': 'pending'}, {'content': '获取 target_db.dw_order 表的字段结构', 'status': 'pending'}, {'content': '生成 ORDER012.csv 文件（包含源表字段信息）', 'status': 'pending'}, {'content': '运行映射脚本生成 ORDER012-mapped.csv 文件', 'status': 'pending'}]
+--- Message 7 [AI] ---
+--- Message 8 [TOOL] ---
+     1	---
+     2	name: metadata-service
+     3	description: 元数据服务。用于查询和管理数据库、表结构等元数据信息。
+     4	metadata: {"emoji":"📦"}
+     5	---
+     6
+     7	# Metadata Service
+     8
+     9	元数据服务，提供数据库和表结构的查询能力。
+    10
+    11	## 服务说明
+    12
+    13	元数据服务是数据平台的核心组件，用于管理所有数据库和表的元信息。通过该服务可以：
+    14	- 查询有哪些数据库
+    15	- 查询某个数据库下有哪些表
+    16	- 查询表的字段结构（列名、类型、注释等）
+    17
+    18	## 接口列表
+    19
+    20	### 1. 获取数据库列表
+    21	- **用途**: 查看数据平台中有哪些数据库
+    22	- **文档**: [get-databases.md](get-databases.md)
+    23
+    24	### 2. 获取表列表
+    25	- **用途**: 查看某个数据库下有哪些表
+    26	- **文档**: [get-tables.md](get-tables.md)
+    27
+    28	### 3. 获取表结构
+    29	- **用途**: 查看表有哪些字段，字段类型是什么
+    30	- **文档**: [get-table-schema.md](get-table-schema.md)
+    31
+    32	## 使用方式
+    33
+    34	使用 platform_service 工具调用：
+    35
+    36	```
+    37	当需要查询数据库信息时，先阅读对应接口文档，然后调用 platform_service 工具。
+    38	```
+--- Message 9 [AI] ---
+--- Message 10 [TOOL] ---
+     1	# 获取表结构
+     2
+     3	## 接口信息
+     4
+     5	- **方法**: GET
+     6	- **端点**: /api/metadata/schema/{database}/{table}
+     7
+     8	## 路径参数
+     9
+    10	| 参数 | 类型 | 必填 | 说明 |
+    11	|------|------|------|------|
+    12	| database | string | 是 | 数据库名称 |
+    13	| table | string | 是 | 表名称 |
+    14
+    15	## 调用示例
+    16
+    17	```python
+    18	platform_service(
+    19	    platform="metadata",
+    20	    method="GET",
+    21	    endpoint="/api/metadata/schema/source_db/orders"
+    22	)
+    23	```
+    24
+    25	## 返回结果
+    26
+    27	```json
+    28	{
+    29	    "columns": [
+    30	        {"name": "id", "type": "int", "comment": "订单ID"},
+    31	        {"name": "customer_id", "type": "int", "comment": "客户ID"},
+    32	        {"name": "amount", "type": "decimal", "comment": "订单金额"}
+    33	    ]
+    34	}
+    35	```
+--- Message 11 [AI] ---
+现在开始执行任务。首先获取源表和目标表的结构信息。
+--- Message 12 [TOOL] ---
+Updated todo list to [{'content': '获取 source_db.order_info 表的字段结构', 'status': 'in_progress'}, {'content': '获取 target_db.dw_order 表的字段结构', 'status': 'pending'}, {'content': '生成 ORDER012.csv 文件（包含源表字段信息）', 'status': 'pending'}, {'content': '运行映射脚本生成 ORDER012-mapped.csv 文件', 'status': 'pending'}]
+--- Message 13 [TOOL] ---
+{"columns": [{"name": "id", "type": "int"}, {"name": "name", "type": "string"}, {"name": "created_at", "type": "timestamp"}]}
+--- Message 14 [TOOL] ---
+{"columns": [{"name": "id", "type": "int"}, {"name": "name", "type": "string"}, {"name": "created_at", "type": "timestamp"}]}
+--- Message 15 [AI] ---
+获取到两个表的结构信息。现在生成 ORDER012.csv 文件。
+--- Message 16 [TOOL] ---
+Updated todo list to [{'content': '获取 source_db.order_info 表的字段结构', 'status': 'completed'}, {'content': '获取 target_db.dw_order 表的字段结构', 'status': 'completed'}, {'content': '生成 ORDER012.csv 文件（包含源表字段信息）', 'status': 'in_progress'}, {'content': '运行映射脚本生成 ORDER012-mapped.csv 文件', 'status': 'pending'}]
+--- Message 17 [AI] ---
+现在我需要生成 ORDER012.csv 文件。根据技能说明，我需要使用 Python 代码生成 CSV 文件。让我先查看是否有映射脚本。
+--- Message 18 [TOOL] ---
+['/Users/vernonsong/Documents/项目/datalake_demo/skills/business-skill/field-mapping/mapping_script.py']
+--- Message 19 [AI] ---
+--- Message 20 [TOOL] ---
+     1	#!/usr/bin/env python3
+     2	# -*- coding: utf-8 -*-
+     3	"""
+     4	字段映射脚本
+     5	根据CSV映射表生成DDL语句和映射结果
+     6	"""
+     7
+     8	import csv
+     9	import sys
+    10	import os
+    11
+    12
+    13	def load_mapping(csv_path: str) -> list:
+    14	    """加载映射表"""
+    15	    mappings = []
+    16	    with open(csv_path, 'r', encoding='utf-8') as f:
+    17	        reader = csv.DictReader(f)
+    18	        for row in reader:
+    19	            mappings.append(row)
+    20	    return mappings
+    21
+    22
+    23	def get_base_name(csv_path: str) -> str:
+    24	    """获取单号（文件名不含扩展名）"""
+    25	    basename = os.path.basename(csv_path)
+    26	    name_without_ext = os.path.splitext(basename)[0]
+    27	    return name_without_ext
+    28
+    29
+    30	def generate_ddl(mappings: list) -> str:
+    31	    """生成DDL语句"""
+    32	    if not mappings:
+    33	        return "-- No mappings found"
+    34
+    35	    target_db = mappings[0]['target_db']
+    36	    target_table = mappings[0]['target_table']
+    37
+    38	    lines = [
+    39	        f"-- Target Table: {target_db}.{target_table}",
+    40	        f"CREATE TABLE IF NOT EXISTS {target_db}.{target_table} (",
+    41	    ]
+    42
+    43	    columns = []
+    44	    for m in mappings:
+    45	        if m['mapping_type'] != '忽略':
+    46	            col_def = f"    {m['target_field']} {m['target_type']}"
+    47	            columns.append(col_def)
+    48
+    49	    lines.append(',\n'.join(columns))
+    50	    lines.append(");")
+    51
+    52	    return '\n'.join(lines)
+    53
+    54
+    55	def generate_mapping_report(mappings: list) -> str:
+    56	    """生成映射报告"""
+    57	    lines = ["# 字段映射报告\n"]
+    58
+    59	    lines.append(f"## 源表: {mappings[0]['source_db']}.{mappings[0]['source_table']}")
+    60	    lines.append(f"## 目标表: {mappings[0]['target_db']}.{mappings[0]['target_table']}\n")
+    61
+    62	    lines.append("## 映射详情\n")
+    63	    lines.append("| 源字段 | 目标字段 | 类型 | 映射方式 |")
+    64	    lines.append("|---
+--- Message 21 [TOOL] ---
+['/Users/vernonsong/Documents/项目/datalake_demo/skills/business-skill/field-mapping/SKILL.md', '/Users/vernonsong/Documents/项目/datalake_demo/skills/business-skill/field-mapping/mapping_script.py', '/Users/vernonsong/Documents/项目/datalake_demo/skills/business-skill/field-mapping/单号.csv']
+--- Message 22 [AI] ---
+我看到有一个示例文件"单号.csv"。让我查看它的内容以了解映射规则的格式。
+--- Message 23 [TOOL] ---
+     1	source_db,source_table,source_field,source_type,target_db,target_table,target_field,target_type,mapping_type
+================================================================================
+2026-03-22 13:11:05,694 - httpx - INFO - HTTP Request: POST https://coding.dashscope.aliyuncs.com/v1/chat/completions "HTTP/1.1 200 OK"
+================================================================================
+🤖 [LLM OUTPUT]
+================================================================================
+--- Generation 1 ---
+现在我需要创建 ORDER012.csv 文件。根据技能说明，我需要先创建包含源表字段信息的 CSV 文件，然后运行映射脚本。
+首先，让我创建 ORDER012.csv 文件（包含源表字段信息）：

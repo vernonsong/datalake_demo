@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>连接测试</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 50px auto;
+      padding: 20px;
+    }
+    .test-item {
+      margin: 20px 0;
+      padding: 15px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+    }
+    .success {
+      background: #d4edda;
+      border-color: #28a745;
+    }
+    .error {
+      background: #f8d7da;
+      border-color: #dc3545;
+    }
+    button {
+      padding: 10px 20px;
+      margin: 5px;
+      cursor: pointer;
+    }
+    pre {
+      background: #f5f5f5;
+      padding: 10px;
+      border-radius: 3px;
+      overflow-x: auto;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔍 前端连接测试</h1>
+  
+  <div class="test-item">
+    <h3>测试 1: 后端服务连通性</h3>
+    <button onclick="testBackend()">测试后端连接</button>
+    <div id="backend-result"></div>
+  </div>
+
+  <div class="test-item">
+    <h3>测试 2: CORS 配置</h3>
+    <button onclick="testCORS()">测试 CORS</button>
+    <div id="cors-result"></div>
+  </div>
+
+  <div class="test-item">
+    <h3>测试 3: 流式对话</h3>
+    <button onclick="testStream()">测试流式对话</button>
+    <div id="stream-result"></div>
+  </div>
+
+  <script>
+    const API_BASE = 'http://localhost:8000';
+
+    async function testBackend() {
+      const resultDiv = document.getElementById('backend-result');
+      resultDiv.innerHTML = '<p>测试中...</p>';
+      
+      try {
+        const response = await fetch(`${API_BASE}/chat/`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            message: '你好',
+            user_id: 'test',
+            stream: false,
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          resultDiv.className = 'success';
+          resultDiv.innerHTML = `
+            <p>✅ 后端服务正常</p>
+            <p>状态码：${response.status}</p>
+            <pre>${JSON.stringify(data, null, 2)}</pre>
+          `;
+        } else {
+          throw new Error(`状态码：${response.status}`);
+        }
+      } catch (error) {
+        resultDiv.className = 'error';
+        resultDiv.innerHTML = `
+          <p>❌ 连接失败</p>
+          <p>错误：${error.message}</p>
+        `;
+      }
+    }
+
+    async function testCORS() {
+      const resultDiv = document.getElementById('cors-result');
+      resultDiv.innerHTML = '<p>测试中...</p>';
+      
+      try {
+        // 先发送 OPTIONS 预检请求
+        const optionsResponse = await fetch(`${API_BASE}/chat/`, {
+          method: 'OPTIONS',
+        });
+
+        const allowHeaders = optionsResponse.headers.get('Access-Control-Allow-Headers');
+        const allowMethods = optionsResponse.headers.get('Access-Control-Allow-Methods');
+        const allowOrigin = optionsResponse.headers.get('Access-Control-Allow-Origin');
+
+        if (allowHeaders || allowMethods || allowOrigin) {
+          resultDiv.className = 'success';
+          resultDiv.innerHTML = `
+            <p>✅ CORS 配置正确</p>
+            <p>Allow-Origin: ${allowOrigin || 'N/A'}</p>
+            <p>Allow-Methods: ${allowMethods || 'N/A'}</p>
+            <p>Allow-Headers: ${allowHeaders || 'N/A'}</p>
+          `;
+        } else {
+          resultDiv.className = 'error';
+          resultDiv.innerHTML = `<p>❌ CORS 响应头缺失</p>`;
+        }
+      } catch (error) {
+        resultDiv.className = 'error';
+        resultDiv.innerHTML = `
+          <p>❌ CORS 测试失败</p>
+          <p>错误：${error.message}</p>
+          <p>说明：后端未正确配置 CORS</p>
+        `;
+      }
+    }
+
+    async function testStream() {
+      const resultDiv = document.getElementById('stream-result');
+      resultDiv.innerHTML = '<p>测试中...</p>';
+      
+      try {
+        const response = await fetch(`${API_BASE}/chat/`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            message: '你好，请简单回复',
+            user_id: 'test',
+            stream: true,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`状态码：${response.status}`);
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let messageCount = 0;
+
+        resultDiv.innerHTML = '<p>接收流式消息中...</p>';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value);
+          const lines = chunk.split('\n');
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6);
+              if (data === '[DONE]') {
+                messageCount++;
+                break;
+              }
+              try {
+                const event = JSON.parse(data);
+                messageCount++;
+                console.log('Event:', event);
+              } catch (e) {
+                // ignore parse errors
+              }
+            }
+          }
+        }
+
+        resultDiv.className = 'success';
+        resultDiv.innerHTML = `
+          <p>✅ 流式对话正常</p>
+          <p>接收消息数：${messageCount}</p>
+        `;
+      } catch (error) {
+        resultDiv.className = 'error';
+        resultDiv.innerHTML = `
+          <p>❌ 流式对话失败</p>
+          <p>错误：${error.message}</p>
+        `;
+      }
+    }
+  </script>
+</body>
+</html>

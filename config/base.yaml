@@ -1,0 +1,13 @@
+app:
+  name: 智能入湖平台
+  version: 0.1.0
+
+database:
+  host: ${database.host}
+  port: ${database.port}
+  username: ${database.username}
+  password: ${database.password}
+
+api:
+  timeout: 30
+  retry: 3

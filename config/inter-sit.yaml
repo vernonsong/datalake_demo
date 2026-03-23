@@ -1,0 +1,6 @@
+app:
+  debug: false
+
+database:
+  host: inter-sit-db.internal
+  pool_size: 20
