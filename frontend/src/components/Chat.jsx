@@ -122,6 +122,8 @@ function ThinkingProcess({ data }) {
             
             const tools = (data.todoTools?.[index] || []).filter(t => t.todoIndex === index && t.name !== 'write_todos');
             const files = (data.todoFiles?.[index] || []).filter(f => f.todoIndex === index);
+            const processText = (data.todoProcessText?.[index] || '').trim();
+            const timeline = data.todoTimeline?.[index] || [];
             const hasChildren = tools.length > 0 || files.length > 0;
             
             return (
@@ -142,50 +144,155 @@ function ThinkingProcess({ data }) {
                       )}
                     </Group>
                     
-                    {/* Render tool/file executions */}
-                    {hasChildren && (
+                    {/* Render executions timeline */}
+                    {((timeline && timeline.length > 0) || processText || hasChildren) && (
                       <Stack gap="xs" mt="xs">
-                        {tools.map((tool, idx) => {
-                          let commandText = '';
-                          if (tool.name === 'execute') {
-                            commandText = tool.args?.command || '';
-                          } else if (tool.name === 'read_file') {
-                            commandText = `cat ${tool.args?.file_path || ''}`;
-                          } else if (tool.name === 'write_file') {
-                            commandText = `echo "..." > ${tool.args?.file_path || ''}`;
-                          } else if (tool.name === 'platform_service') {
-                            commandText = `curl ${tool.args?.method || 'GET'} ${tool.args?.endpoint || ''}`;
-                          } else {
-                            commandText = `${tool.name} ${JSON.stringify(tool.args)}`;
-                          }
-                          
-                          return (
-                            <Box 
-                              key={idx} 
-                              bg="#f8f9fa" 
-                              p="md" 
-                              style={{ borderRadius: 8, fontFamily: 'Menlo, Monaco, Consolas, monospace', border: '1px solid #dee2e6' }}
-                            >
-                              <Text size="sm" c="gray.7" style={{ wordBreak: 'break-all' }}>
-                                <Text span c="blue.7">$ </Text>
-                                {commandText}
-                              </Text>
-                            </Box>
-                          );
-                        })}
-                        {files.map((file, idx) => (
-                           <Box 
-                             key={`f-${idx}`} 
-                             bg="#f8f9fa" 
-                             p="md" 
-                             style={{ borderRadius: 8, fontFamily: 'Menlo, Monaco, Consolas, monospace', border: '1px solid #dee2e6' }}
-                           >
-                             <Text size="sm" c="gray.7" style={{ wordBreak: 'break-all' }}>
-                               <Text span c="blue.7">$ </Text>
-                               cat {file.path}
-                             </Text>
-                           </Box>
-                        ))}
+                        {(timeline && timeline.length > 0) ? (
+                          timeline.map((item, idx) => {
+                            if (item.kind === 'text') {
+                              const text = (item.content || '').trim();
+                              if (!text) {
+                                return null;
+                              }
+                              return (
+                                <Box
+                                  key={`tl-text-${idx}`}
+                                  bg="#ffffff"
+                                  p="md"
+                                  style={{ borderRadius: 8, border: '1px solid #dee2e6' }}
+                                >
+                                  <Box
+                                    c="gray.8"
+                                    style={{
+                                      fontSize: '14px',
+                                      lineHeight: 1.6,
+                                      wordBreak: 'break-word',
+                                    }}
+                                    className="markdown-body"
+                                  >
+                                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                      {text}
+                                    </ReactMarkdown>
+                                  </Box>
+                                </Box>
+                              );
+                            }
+
+                            if (item.kind === 'tool') {
+                              const tool = item.tool;
+                              let commandText = '';
+                              if (tool?.name === 'execute') {
+                                commandText = tool.args?.command || '';
+                              } else if (tool?.name === 'read_file') {
+                                commandText = `cat ${tool.args?.file_path || ''}`;
+                              } else if (tool?.name === 'write_file') {
+                                commandText = `echo "..." > ${tool.args?.file_path || ''}`;
+                              } else if (tool?.name === 'platform_service') {
+                                commandText = `curl ${tool.args?.method || 'GET'} ${tool.args?.endpoint || ''}`;
+                              } else {
+                                commandText = `${tool?.name} ${JSON.stringify(tool?.args)}`;
+                              }
+
+                              return (
+                                <Box
+                                  key={`tl-tool-${idx}`}
+                                  bg="#f8f9fa"
+                                  p="md"
+                                  style={{ borderRadius: 8, fontFamily: 'Menlo, Monaco, Consolas, monospace', border: '1px solid #dee2e6' }}
+                                >
+                                  <Text size="sm" c="gray.7" style={{ wordBreak: 'break-all' }}>
+                                    <Text span c="blue.7">$ </Text>
+                                    {commandText}
+                                  </Text>
+                                </Box>
+                              );
+                            }
+
+                            if (item.kind === 'file') {
+                              const file = item.file;
+                              return (
+                                <Box
+                                  key={`tl-file-${idx}`}
+                                  bg="#f8f9fa"
+                                  p="md"
+                                  style={{ borderRadius: 8, fontFamily: 'Menlo, Monaco, Consolas, monospace', border: '1px solid #dee2e6' }}
+                                >
+                                  <Text size="sm" c="gray.7" style={{ wordBreak: 'break-all' }}>
+                                    <Text span c="blue.7">$ </Text>
+                                    cat {file?.path}
+                                  </Text>
+                                </Box>
+                              );
+                            }
+
+                            return null;
+                          })
+                        ) : (
+                          <>
+                            {!!processText && (
+                              <Box
+                                bg="#ffffff"
+                                p="md"
+                                style={{ borderRadius: 8, border: '1px solid #dee2e6' }}
+                              >
+                                <Box
+                                  c="gray.8"
+                                  style={{
+                                    fontSize: '14px',
+                                    lineHeight: 1.6,
+                                    wordBreak: 'break-word',
+                                  }}
+                                  className="markdown-body"
+                                >
+                                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                    {processText}
+                                  </ReactMarkdown>
+                                </Box>
+                              </Box>
+                            )}
+                            {tools.map((tool, idx) => {
+                              let commandText = '';
+                              if (tool.name === 'execute') {
+                                commandText = tool.args?.command || '';
+                              } else if (tool.name === 'read_file') {
+                                commandText = `cat ${tool.args?.file_path || ''}`;
+                              } else if (tool.name === 'write_file') {
+                                commandText = `echo "..." > ${tool.args?.file_path || ''}`;
+                              } else if (tool.name === 'platform_service') {
+                                commandText = `curl ${tool.args?.method || 'GET'} ${tool.args?.endpoint || ''}`;
+                              } else {
+                                commandText = `${tool.name} ${JSON.stringify(tool.args)}`;
+                              }
+                              
+                              return (
+                                <Box 
+                                  key={idx} 
+                                  bg="#f8f9fa" 
+                                  p="md" 
+                                  style={{ borderRadius: 8, fontFamily: 'Menlo, Monaco, Consolas, monospace', border: '1px solid #dee2e6' }}
+                                >
+                                  <Text size="sm" c="gray.7" style={{ wordBreak: 'break-all' }}>
+                                    <Text span c="blue.7">$ </Text>
+                                    {commandText}
+                                  </Text>
+                                </Box>
+                              );
+                            })}
+                            {files.map((file, idx) => (
+                               <Box 
+                                 key={`f-${idx}`} 
+                                 bg="#f8f9fa" 
+                                 p="md" 
+                                 style={{ borderRadius: 8, fontFamily: 'Menlo, Monaco, Consolas, monospace', border: '1px solid #dee2e6' }}
+                               >
+                                 <Text size="sm" c="gray.7" style={{ wordBreak: 'break-all' }}>
+                                   <Text span c="blue.7">$ </Text>
+                                   cat {file.path}
+                                 </Text>
+                               </Box>
+                            ))}
+                          </>
+                        )}
                       </Stack>
                     )}
                   </Box>
@@ -338,8 +445,51 @@ function Chat() {
   const todoToolsRef = useRef({});
   const todoFilesRef = useRef({});
   const todoProcessTextRef = useRef({});
+  const todoTimelineRef = useRef({});
   const globalToolsRef = useRef([]);
   const aiTextRef = useRef('');
+  const activeTodoIndexRef = useRef(null);
+  const pendingBeforeTodosTimelineRef = useRef([]);
+  const finalAnswerTextRef = useRef('');
+  const hasTodosStartedRef = useRef(false);
+  const lastTodoIndexRef = useRef(null);
+
+  const getActiveTodoIndex = (todos) => {
+    if (!Array.isArray(todos) || todos.length === 0) {
+      return null;
+    }
+    if (todos.every((t) => t?.status === 'completed')) {
+      return null;
+    }
+    const inProgressIndex = todos.findIndex((t) => t?.status === 'in_progress');
+    if (inProgressIndex !== -1) {
+      return inProgressIndex;
+    }
+    const pendingIndex = todos.findIndex((t) => t?.status === 'pending');
+    if (pendingIndex !== -1) {
+      return pendingIndex;
+    }
+    return todos.length - 1;
+  };
+
+  const ensureTodoTimeline = (todoIndex) => {
+    if (!todoTimelineRef.current[todoIndex]) {
+      todoTimelineRef.current[todoIndex] = [];
+    }
+    return todoTimelineRef.current[todoIndex];
+  };
+
+  const appendTimelineText = (timeline, text) => {
+    if (!text) {
+      return;
+    }
+    const last = timeline[timeline.length - 1];
+    if (last && last.kind === 'text') {
+      last.content += text;
+      return;
+    }
+    timeline.push({ kind: 'text', content: text, timestamp: new Date().toISOString() });
+  };
 
   // 自动滚动到底部
   const scrollToBottom = () => {
@@ -389,8 +539,14 @@ function Chat() {
       todoToolsRef.current = {};
       todoFilesRef.current = {};
       todoProcessTextRef.current = {};
+      todoTimelineRef.current = {};
       globalToolsRef.current = [];
       aiTextRef.current = '';
+      activeTodoIndexRef.current = null;
+      pendingBeforeTodosTimelineRef.current = [];
+      finalAnswerTextRef.current = '';
+      hasTodosStartedRef.current = false;
+      lastTodoIndexRef.current = null;
 
       const updateThinkingMessage = (isRunning = true) => {
         const thinkingData = {
@@ -398,6 +554,7 @@ function Chat() {
           todoTools: {...todoToolsRef.current},
           todoFiles: {...todoFilesRef.current},
           todoProcessText: {...todoProcessTextRef.current},
+          todoTimeline: {...todoTimelineRef.current},
           globalTools: [...globalToolsRef.current],
         };
 
@@ -455,27 +612,44 @@ function Chat() {
 
       for await (const event of generator) {
         if (event.type === 'token') {
-          aiTextRef.current += event.content;
-          aiMessage.content = aiTextRef.current;
-          
-          setMessages(prev => {
-            const lastMsg = prev[prev.length - 1];
-            if (lastMsg && lastMsg.role === 'assistant' && !lastMsg.type) {
-              return [...prev.slice(0, -1), {...aiMessage}];
-            } else {
-              return [...prev, {...aiMessage}];
+          const hasTodos = currentTodosRef.current.length > 0;
+          const computedActive = getActiveTodoIndex(currentTodosRef.current);
+          const resolvedTodoIndex = activeTodoIndexRef.current ?? computedActive;
+          const fallbackTodoIndex = lastTodoIndexRef.current;
+
+          if (resolvedTodoIndex !== null || (hasTodosStartedRef.current && fallbackTodoIndex !== null)) {
+            const targetIndex = resolvedTodoIndex ?? fallbackTodoIndex;
+            const timeline = ensureTodoTimeline(targetIndex);
+            appendTimelineText(timeline, event.content);
+            updateThinkingMessage();
+          } else if (hasTodos) {
+            if (!hasTodosStartedRef.current) {
+              finalAnswerTextRef.current += event.content;
+              aiMessage.content = finalAnswerTextRef.current;
+              setMessages((prev) => {
+                const lastMsg = prev[prev.length - 1];
+                if (lastMsg && lastMsg.role === 'assistant' && !lastMsg.type) {
+                  return [...prev.slice(0, -1), { ...aiMessage }];
+                }
+                return [...prev, { ...aiMessage }];
+              });
             }
-          });
+          } else {
+            appendTimelineText(pendingBeforeTodosTimelineRef.current, event.content);
+            updateThinkingMessage();
+          }
         } else if (event.type === 'message') {
-          aiMessage.content = event.content;
-          setMessages(prev => {
-            const lastMsg = prev[prev.length - 1];
-            if (lastMsg && lastMsg.role === 'assistant' && !lastMsg.type) {
-              return [...prev.slice(0, -1), {...aiMessage}];
-            } else {
-              return [...prev, {...aiMessage}];
-            }
-          });
+          if (!hasTodosStartedRef.current) {
+            aiMessage.content = event.content;
+            setMessages(prev => {
+              const lastMsg = prev[prev.length - 1];
+              if (lastMsg && lastMsg.role === 'assistant' && !lastMsg.type) {
+                return [...prev.slice(0, -1), { ...aiMessage }];
+              } else {
+                return [...prev, { ...aiMessage }];
+              }
+            });
+          }
         } else if (event.type === 'tool') {
           const toolMessage = {
             type: 'tool',
@@ -485,22 +659,28 @@ function Chat() {
           };
           setMessages(prev => [...prev, toolMessage]);
         } else if (event.type === 'tool_call') {
-          const currentTodoCount = currentTodosRef.current.length;
           const toolInfo = {
             name: event.name,
             args: event.args,
             timestamp: new Date().toISOString(),
           };
-          
-          if (currentTodoCount > 0) {
-            const todoIndex = currentTodoCount - 1;
+
+          const computedActive = getActiveTodoIndex(currentTodosRef.current);
+          const resolvedTodoIndex = activeTodoIndexRef.current ?? computedActive;
+          const targetIndex = resolvedTodoIndex ?? (hasTodosStartedRef.current ? lastTodoIndexRef.current : null);
+
+          if (targetIndex !== null) {
+            const todoIndex = targetIndex;
             if (!todoToolsRef.current[todoIndex]) {
               todoToolsRef.current[todoIndex] = [];
             }
             toolInfo.todoIndex = todoIndex;
             todoToolsRef.current[todoIndex].push(toolInfo);
+
+            const timeline = ensureTodoTimeline(todoIndex);
+            timeline.push({ kind: 'tool', tool: toolInfo, timestamp: toolInfo.timestamp });
           } else {
-            globalToolsRef.current.push(toolInfo);
+            pendingBeforeTodosTimelineRef.current.push({ kind: 'tool', tool: toolInfo, timestamp: toolInfo.timestamp });
           }
           
           updateThinkingMessage();
@@ -510,25 +690,47 @@ function Chat() {
             timestamp: new Date().toISOString(),
           };
           
-          const currentTodoCount = currentTodosRef.current.length;
-          if (currentTodoCount > 0) {
-            const todoIndex = currentTodoCount - 1;
+          const computedActive = getActiveTodoIndex(currentTodosRef.current);
+          const resolvedTodoIndex = activeTodoIndexRef.current ?? computedActive;
+          const targetIndex = resolvedTodoIndex ?? (hasTodosStartedRef.current ? lastTodoIndexRef.current : null);
+
+          if (targetIndex !== null) {
+            const todoIndex = targetIndex;
             if (!todoFilesRef.current[todoIndex]) {
               todoFilesRef.current[todoIndex] = [];
             }
             fileRead.todoIndex = todoIndex;
             todoFilesRef.current[todoIndex].push(fileRead);
+
+            const timeline = ensureTodoTimeline(todoIndex);
+            timeline.push({ kind: 'file', file: fileRead, timestamp: fileRead.timestamp });
           } else {
-            globalToolsRef.current.push({
-              name: 'file_read',
-              path: event.path,
-              timestamp: new Date().toISOString(),
-            });
+            pendingBeforeTodosTimelineRef.current.push({ kind: 'file', file: fileRead, timestamp: fileRead.timestamp });
           }
           
           updateThinkingMessage();
         } else if (event.type === 'todos') {
+          const previousTodoCount = currentTodosRef.current.length;
           currentTodosRef.current = event.content;
+          activeTodoIndexRef.current = getActiveTodoIndex(event.content);
+
+          if (!hasTodosStartedRef.current && event.content?.length > 0) {
+            hasTodosStartedRef.current = true;
+          }
+          if (event.content?.length > 0) {
+            const idx = activeTodoIndexRef.current ?? getActiveTodoIndex(event.content) ?? (event.content.length - 1);
+            lastTodoIndexRef.current = idx;
+          }
+
+          if (previousTodoCount === 0 && event.content?.length > 0) {
+            const flushIndex = activeTodoIndexRef.current ?? 0;
+
+            if (pendingBeforeTodosTimelineRef.current.length > 0) {
+              const timeline = ensureTodoTimeline(flushIndex);
+              timeline.push(...pendingBeforeTodosTimelineRef.current);
+              pendingBeforeTodosTimelineRef.current = [];
+            }
+          }
           updateThinkingMessage();
         } else if (event.type === 'done') {
           updateThinkingMessage(false);

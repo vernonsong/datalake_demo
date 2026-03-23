@@ -66,6 +66,15 @@ python3 skills/business-skill/field-mapping/mapping_script.py {单号}.csv
 - {单号}-mapped.csv：映射结果（包含 source_field, source_type, target_type 等）
 - {单号}-ddl.sql：DDL 建表语句
 
+## 示例输出
+
+生成的 DDL 文件内容示例：
+```sql
+CREATE TABLE target_db.dw_order (
+    ...
+);
+```
+
 ## 执行成功标志
 
 **脚本执行成功的标志**：返回结果中包含 `=== 字段映射完成 ===`

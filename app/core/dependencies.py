@@ -20,10 +20,15 @@ class TokenProvider:
         self.base_url = settings.mock_service_url
         self.secret = settings.mock_api_secret
         self._token = None
+        self._expires_at = None
 
     def get_token(self) -> str:
         """获取Token"""
-        if self._token:
+        if self._token and self._expires_at:
+            import time
+            if time.time() < (self._expires_at - 30):
+                return self._token
+        elif self._token and not self._expires_at:
             return self._token
 
         try:
@@ -34,7 +39,12 @@ class TokenProvider:
                 timeout=5
             )
             if response.status_code == 200:
-                self._token = response.json().get("token")
+                payload = response.json() or {}
+                self._token = payload.get("token")
+                expires_in = payload.get("expires_in")
+                if isinstance(expires_in, (int, float)):
+                    import time
+                    self._expires_at = time.time() + float(expires_in)
                 return self._token or ""
         except Exception:
             pass
@@ -43,6 +53,7 @@ class TokenProvider:
     def clear_token(self):
         """清除Token缓存"""
         self._token = None
+        self._expires_at = None
 
 
 _token_provider: TokenProvider = None
@@ -79,7 +90,7 @@ def get_metadata_client():
     base_url = base_url.rsplit('/api/', 1)[0]
     return MetadataClient(
         base_url=base_url,
-        token_provider=get_token
+        token_provider=get_token_provider().get_token
     )
 
 
@@ -95,7 +106,7 @@ def get_schedule_client():
     base_url = base_url.rsplit('/api/', 1)[0]
     return ScheduleClient(
         base_url=base_url,
-        token_provider=get_token
+        token_provider=get_token_provider().get_token
     )
 
 
@@ -111,7 +122,7 @@ def get_integration_client():
     base_url = base_url.rsplit('/api/', 1)[0]
     return IntegrationClient(
         base_url=base_url,
-        token_provider=get_token
+        token_provider=get_token_provider().get_token
     )
 
 

@@ -87,6 +87,24 @@ class BaseClient:
                 timeout=self.timeout
             )
 
+            if response.status_code == 401 and use_auth and self.token_provider:
+                token_provider_self = getattr(self.token_provider, "__self__", None)
+                if token_provider_self and hasattr(token_provider_self, "clear_token"):
+                    token_provider_self.clear_token()
+                    request_headers = {}
+                    request_headers.update(self._get_auth_headers())
+                    if headers:
+                        request_headers.update(headers)
+                    response = self.session.request(
+                        method=method.upper(),
+                        url=url,
+                        params=params,
+                        data=data,
+                        json=json,
+                        headers=request_headers,
+                        timeout=self.timeout
+                    )
+
             response.raise_for_status()
 
             result = response.json()

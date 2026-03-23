@@ -142,7 +142,6 @@ class ChatAgent:
             thread_id = self._resolve_thread_id(user_id, conv_id)
             last_todos = None
             initial_todos_captured = False
-            last_ai_content = ""
             
             # 使用 stream_mode="messages" 获取 token 级流式
             # 同时使用 stream_mode="values" 获取状态快照（包含 todos）

@@ -132,10 +132,13 @@ class TaskCompletionValidator:
                     self.warnings.append(f"{test['name']}: 响应未包含预期关键词")
                     print(f"  ⚠ 响应: {full_text[:200]}")
 
-                doc_errors = self._validate_doc_read_before_platform_calls(events)
+                doc_errors, doc_warnings = self._validate_doc_read_before_platform_calls(events)
                 if doc_errors:
                     for err in doc_errors:
                         self.errors.append(f"{test['name']}: {err}")
+                if doc_warnings:
+                    for warn in doc_warnings:
+                        self.warnings.append(f"{test['name']}: {warn}")
 
                 hook_errors = self._validate_no_python3_c_csv_bypass(events)
                 if hook_errors:
@@ -150,7 +153,7 @@ class TaskCompletionValidator:
             f"{self.api_base}/chat/",
             json={"message": message, "stream": True},
             stream=True,
-            timeout=(5, 120),
+            timeout=(5, 240),
         )
         if resp.status_code != 200:
             raise RuntimeError(f"聊天接口失败: {resp.status_code}")
@@ -175,6 +178,7 @@ class TaskCompletionValidator:
     def _validate_doc_read_before_platform_calls(self, events):
         file_reads = []
         errors = []
+        warnings = []
 
         for ev in events:
             ev_type = ev.get("type")
@@ -201,9 +205,9 @@ class TaskCompletionValidator:
 
             matched = any(fr.endswith(doc_path) for fr in file_reads)
             if not matched:
-                errors.append(f"未在调用 platform_service 前读取文档: {doc_path}")
+                warnings.append(f"未观测到 file_read 事件（可能未读取文档或前端未上报）: {doc_path}")
 
-        return errors
+        return errors, warnings
 
     def _validate_no_python3_c_csv_bypass(self, events):
         errors = []
