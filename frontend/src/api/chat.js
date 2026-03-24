@@ -51,57 +51,56 @@ export async function* streamChat({ message, userId = 'default_user', conversati
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
 
+    let buffer = '';
+
     while (true) {
       const { done, value } = await reader.read();
-      
-      if (done) {
-        break;
-      }
+      if (done) break;
 
-      const chunk = decoder.decode(value, { stream: true });
-      const lines = chunk.split('\n');
+      buffer += decoder.decode(value, { stream: true });
+      buffer = buffer.replace(/\r\n/g, '\n');
 
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const data = line.slice(6);
-          
-          if (data === '[DONE]') {
-            yield { type: 'done', content: '处理完成' };
-            return;
+      let sepIndex;
+      while ((sepIndex = buffer.indexOf('\n\n')) !== -1) {
+        const rawEvent = buffer.slice(0, sepIndex);
+        buffer = buffer.slice(sepIndex + 2);
+
+        const lines = rawEvent.split('\n');
+        const dataLines = lines
+          .filter((l) => l.startsWith('data:'))
+          .map((l) => l.replace(/^data:\s?/, ''));
+
+        if (dataLines.length === 0) continue;
+
+        const data = dataLines.join('\n');
+        if (data === '[DONE]') {
+          yield { type: 'done', content: '处理完成' };
+          return;
+        }
+
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.type === 'token') {
+            yield { type: 'token', content: parsed.content };
+          } else if (parsed.type === 'message') {
+            yield { type: 'message', role: parsed.role, content: parsed.content };
+          } else if (parsed.type === 'tool') {
+            yield { type: 'tool', name: parsed.name, content: parsed.content };
+          } else if (parsed.type === 'tool_call') {
+            yield { type: 'tool_call', name: parsed.name, args: parsed.args };
+          } else if (parsed.type === 'todos') {
+            yield { type: 'todos', content: parsed.content };
+          } else if (parsed.type === 'phase') {
+            yield { type: 'phase', phase: parsed.phase };
+          } else if (parsed.type === 'done') {
+            yield { type: 'done', content: parsed.content };
+          } else if (parsed.type === 'error') {
+            yield { type: 'error', error: parsed.error };
+          } else {
+            yield parsed;
           }
-
-          try {
-            const parsed = JSON.parse(data);
-            
-            // 根据类型返回不同的事件
-            if (parsed.type === 'token') {
-              // token 级流式
-              yield { type: 'token', content: parsed.content };
-            } else if (parsed.type === 'message') {
-              // 完整 AI 消息
-              yield { type: 'message', role: parsed.role, content: parsed.content };
-            } else if (parsed.type === 'tool') {
-              // 工具调用结果
-              yield { type: 'tool', name: parsed.name, content: parsed.content };
-            } else if (parsed.type === 'tool_call') {
-              // 工具调用请求
-              yield { type: 'tool_call', name: parsed.name, args: parsed.args };
-            } else if (parsed.type === 'todos') {
-              // todo 列表更新
-              yield { type: 'todos', content: parsed.content };
-            } else if (parsed.type === 'done') {
-              // 完成
-              yield { type: 'done', content: parsed.content };
-            } else if (parsed.type === 'error') {
-              // 错误
-              yield { type: 'error', error: parsed.error };
-            } else {
-              // 兼容旧格式
-              yield parsed;
-            }
-          } catch (e) {
-            console.error('解析响应数据失败:', e, '原始数据:', data);
-          }
+        } catch (e) {
+          console.error('解析响应数据失败:', e, '原始数据:', data);
         }
       }
     }

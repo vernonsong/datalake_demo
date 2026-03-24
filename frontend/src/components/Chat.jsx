@@ -55,7 +55,7 @@ function ThinkingProcess({ data }) {
   const [isCollapsed, { toggle }] = useDisclosure(false);
   const [isSummaryClosed, { close: closeSummary }] = useDisclosure(false);
   
-  if (!data || (!data.todos?.length && !data.globalTools?.length)) {
+  if (!data || (!data.todos?.length && !data.globalTools?.length && !data.preludeTimeline?.length)) {
     return null;
   }
 
@@ -84,6 +84,88 @@ function ThinkingProcess({ data }) {
 
       <Collapse in={!isCollapsed}>
         <Stack gap="sm" pl="sm" style={{ borderLeft: '1px solid #dee2e6', marginLeft: '6px' }}>
+
+          {data.preludeTimeline?.length > 0 && (
+            <Stack gap="xs">
+              {data.preludeTimeline.map((item, idx) => {
+                if (item.kind === 'text') {
+                  const text = (item.content || '').trim();
+                  if (!text) {
+                    return null;
+                  }
+                  return (
+                    <Box
+                      key={`prelude-text-${idx}`}
+                      bg="#ffffff"
+                      p="md"
+                      style={{ borderRadius: 8, border: '1px solid #dee2e6' }}
+                    >
+                      <Box
+                        c="gray.8"
+                        style={{
+                          fontSize: '14px',
+                          lineHeight: 1.6,
+                          wordBreak: 'break-word',
+                        }}
+                        className="markdown-body"
+                      >
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {text}
+                        </ReactMarkdown>
+                      </Box>
+                    </Box>
+                  );
+                }
+
+                if (item.kind === 'tool') {
+                  const tool = item.tool;
+                  let commandText = '';
+                  if (tool?.name === 'execute') {
+                    commandText = tool.args?.command || '';
+                  } else if (tool?.name === 'read_file') {
+                    commandText = `cat ${tool.args?.file_path || ''}`;
+                  } else if (tool?.name === 'platform_service') {
+                    commandText = `curl ${tool.args?.method || 'GET'} ${tool.args?.endpoint || ''}`;
+                  } else {
+                    commandText = `${tool?.name} ${JSON.stringify(tool?.args)}`;
+                  }
+
+                  return (
+                    <Box
+                      key={`prelude-tool-${idx}`}
+                      bg="#f8f9fa"
+                      p="md"
+                      style={{ borderRadius: 8, fontFamily: 'Menlo, Monaco, Consolas, monospace', border: '1px solid #dee2e6' }}
+                    >
+                      <Text size="sm" c="gray.7" style={{ wordBreak: 'break-all' }}>
+                        <Text span c="blue.7">$ </Text>
+                        {commandText}
+                      </Text>
+                    </Box>
+                  );
+                }
+
+                if (item.kind === 'file') {
+                  const file = item.file;
+                  return (
+                    <Box
+                      key={`prelude-file-${idx}`}
+                      bg="#f8f9fa"
+                      p="md"
+                      style={{ borderRadius: 8, fontFamily: 'Menlo, Monaco, Consolas, monospace', border: '1px solid #dee2e6' }}
+                    >
+                      <Text size="sm" c="gray.7" style={{ wordBreak: 'break-all' }}>
+                        <Text span c="blue.7">$ </Text>
+                        cat {file?.path}
+                      </Text>
+                    </Box>
+                  );
+                }
+
+                return null;
+              })}
+            </Stack>
+          )}
           
           {/* 全局工具调用 (在待办清单之前) */}
           {data.globalTools?.filter(t => t.name !== 'write_todos').map((tool, idx) => {
@@ -453,6 +535,8 @@ function Chat() {
   const finalAnswerTextRef = useRef('');
   const hasTodosStartedRef = useRef(false);
   const lastTodoIndexRef = useRef(null);
+  const phaseRef = useRef(null);
+  const thinkingUpdateTimerRef = useRef(null);
 
   const getActiveTodoIndex = (todos) => {
     if (!Array.isArray(todos) || todos.length === 0) {
@@ -547,6 +631,7 @@ function Chat() {
       finalAnswerTextRef.current = '';
       hasTodosStartedRef.current = false;
       lastTodoIndexRef.current = null;
+      phaseRef.current = null;
 
       const updateThinkingMessage = (isRunning = true) => {
         const thinkingData = {
@@ -556,6 +641,7 @@ function Chat() {
           todoProcessText: {...todoProcessTextRef.current},
           todoTimeline: {...todoTimelineRef.current},
           globalTools: [...globalToolsRef.current],
+          preludeTimeline: [...pendingBeforeTodosTimelineRef.current],
         };
 
         const thinkingMessage = {
@@ -610,36 +696,57 @@ function Chat() {
         });
       };
 
+      const scheduleThinkingUpdate = (isRunning = true) => {
+        if (thinkingUpdateTimerRef.current) {
+          return;
+        }
+        thinkingUpdateTimerRef.current = setTimeout(() => {
+          thinkingUpdateTimerRef.current = null;
+          updateThinkingMessage(isRunning);
+        }, 50);
+      };
+
       for await (const event of generator) {
+        if (event.type === 'phase') {
+          phaseRef.current = event.phase || null;
+          if (phaseRef.current === 'final') {
+            activeTodoIndexRef.current = null;
+          }
+          updateThinkingMessage();
+          continue;
+        }
+
         if (event.type === 'token') {
-          const hasTodos = currentTodosRef.current.length > 0;
           const computedActive = getActiveTodoIndex(currentTodosRef.current);
           const resolvedTodoIndex = activeTodoIndexRef.current ?? computedActive;
-          const fallbackTodoIndex = lastTodoIndexRef.current;
+          const isFinalPhase = phaseRef.current === 'final' || (hasTodosStartedRef.current && computedActive === null);
+          const isThinkingPhase = phaseRef.current === 'thinking' || (hasTodosStartedRef.current && !isFinalPhase);
 
-          if (resolvedTodoIndex !== null || (hasTodosStartedRef.current && fallbackTodoIndex !== null)) {
-            const targetIndex = resolvedTodoIndex ?? fallbackTodoIndex;
-            const timeline = ensureTodoTimeline(targetIndex);
-            appendTimelineText(timeline, event.content);
-            updateThinkingMessage();
-          } else if (hasTodos) {
-            if (!hasTodosStartedRef.current) {
-              finalAnswerTextRef.current += event.content;
-              aiMessage.content = finalAnswerTextRef.current;
-              setMessages((prev) => {
-                const lastMsg = prev[prev.length - 1];
-                if (lastMsg && lastMsg.role === 'assistant' && !lastMsg.type) {
-                  return [...prev.slice(0, -1), { ...aiMessage }];
-                }
-                return [...prev, { ...aiMessage }];
-              });
+          if (isThinkingPhase) {
+            const targetIndex = resolvedTodoIndex ?? lastTodoIndexRef.current;
+            if (targetIndex !== null) {
+              const timeline = ensureTodoTimeline(targetIndex);
+              appendTimelineText(timeline, event.content);
+              scheduleThinkingUpdate();
             }
-          } else {
-            appendTimelineText(pendingBeforeTodosTimelineRef.current, event.content);
-            updateThinkingMessage();
+            continue;
+          }
+
+          if (isFinalPhase || !hasTodosStartedRef.current) {
+            finalAnswerTextRef.current += event.content;
+            aiMessage.content = finalAnswerTextRef.current;
+            setMessages((prev) => {
+              const lastMsg = prev[prev.length - 1];
+              if (lastMsg && lastMsg.role === 'assistant' && !lastMsg.type) {
+                return [...prev.slice(0, -1), { ...aiMessage }];
+              }
+              return [...prev, { ...aiMessage }];
+            });
+            continue;
           }
         } else if (event.type === 'message') {
-          if (!hasTodosStartedRef.current) {
+          const isFinalPhase = phaseRef.current === 'final' || (hasTodosStartedRef.current && getActiveTodoIndex(currentTodosRef.current) === null);
+          if (!hasTodosStartedRef.current || isFinalPhase) {
             aiMessage.content = event.content;
             setMessages(prev => {
               const lastMsg = prev[prev.length - 1];
@@ -733,6 +840,10 @@ function Chat() {
           }
           updateThinkingMessage();
         } else if (event.type === 'done') {
+          if (thinkingUpdateTimerRef.current) {
+            clearTimeout(thinkingUpdateTimerRef.current);
+            thinkingUpdateTimerRef.current = null;
+          }
           updateThinkingMessage(false);
         } else if (event.type === 'error') {
           const errorMessage = {

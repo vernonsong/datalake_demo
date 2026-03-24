@@ -65,6 +65,10 @@ def stream_generator(chat_agent: ChatAgent, user_id: str, message: str, conv_id:
                 # Todo 列表更新
                 todos = event.get('content', [])
                 yield f"data: {json.dumps({'type': 'todos', 'content': todos}, ensure_ascii=False)}\n\n"
+
+            elif event_type == 'phase':
+                phase = event.get('phase', '')
+                yield f"data: {json.dumps({'type': 'phase', 'phase': phase}, ensure_ascii=False)}\n\n"
             
             elif event_type == 'done':
                 # 处理完成

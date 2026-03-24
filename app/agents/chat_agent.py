@@ -142,9 +142,12 @@ class ChatAgent:
             thread_id = self._resolve_thread_id(user_id, conv_id)
             last_todos = None
             initial_todos_captured = False
+            last_phase = None
             
             # 使用 stream_mode="messages" 获取 token 级流式
             # 同时使用 stream_mode="values" 获取状态快照（包含 todos）
+            tool_call_buffer = {}  # 缓存工具调用 chunks
+            
             for mode, chunk in self.agent.stream(
                 {"messages": deepagents_messages},
                 config={"configurable": {"thread_id": thread_id}},
@@ -167,7 +170,66 @@ class ChatAgent:
                         # 工具响应消息，跳过不输出
                         continue
                     
+                    # 处理工具调用 chunks
+                    if hasattr(msg, 'tool_call_chunks') and msg.tool_call_chunks:
+                        for tc_chunk in msg.tool_call_chunks:
+                            idx = tc_chunk.get('index')
+                            if idx is not None:
+                                if idx not in tool_call_buffer:
+                                    tool_call_buffer[idx] = {'name': '', 'args': '', 'id': '', 'type': 'tool_call'}
+                                
+                                if tc_chunk.get('name'):
+                                    tool_call_buffer[idx]['name'] += tc_chunk['name']
+                                if tc_chunk.get('args'):
+                                    tool_call_buffer[idx]['args'] += tc_chunk['args']
+                                if tc_chunk.get('id'):
+                                    tool_call_buffer[idx]['id'] += tc_chunk['id']
+                        continue
+
                     if hasattr(msg, 'content') and msg.content:
+                        # 如果有文本内容，且有缓存的工具调用，说明工具调用已结束（或穿插），先发送工具调用
+                        if tool_call_buffer:
+                            for idx in sorted(tool_call_buffer.keys()):
+                                tool_info = tool_call_buffer[idx]
+                                # 尝试解析 args
+                                try:
+                                    if tool_info['args']:
+                                        tool_info['args'] = json.loads(tool_info['args'])
+                                except json.JSONDecodeError:
+                                    pass # 保持原样或忽略
+                                
+                                # 发送工具调用事件
+                                tool_name = tool_info['name']
+                                tool_args = tool_info['args']
+                                
+                                # 1. 处理文件读取工具
+                                if tool_name in ['read_file', 'read', 'file_read']:
+                                    file_path = tool_args.get('file_path', tool_args.get('path', '')) if isinstance(tool_args, dict) else ''
+                                    if file_path:
+                                        import os
+                                        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+                                        try:
+                                            rel_path = os.path.relpath(file_path, project_root)
+                                            yield {
+                                                'type': 'file_read',
+                                                'path': rel_path
+                                            }
+                                        except ValueError:
+                                            yield {
+                                                'type': 'file_read',
+                                                'path': file_path
+                                            }
+                                # 2. 处理 Todo 列表更新工具 - 跳过
+                                elif tool_name in ['write_todos', 'TodoWrite']:
+                                    pass
+                                else:
+                                    yield {
+                                        'type': 'tool_call',
+                                        'name': tool_name,
+                                        'args': tool_args
+                                    }
+                            tool_call_buffer.clear()
+
                         # 发送 token
                         yield {
                             'type': 'token',
@@ -176,6 +238,39 @@ class ChatAgent:
                 
                 elif mode == "values":
                     # 状态快照 - 获取 todos 等信息
+                    # 先清空并发送缓存的工具调用（确保在状态更新前发送）
+                    if tool_call_buffer:
+                        for idx in sorted(tool_call_buffer.keys()):
+                            tool_info = tool_call_buffer[idx]
+                            try:
+                                if tool_info['args']:
+                                    tool_info['args'] = json.loads(tool_info['args'])
+                            except json.JSONDecodeError:
+                                pass
+                            
+                            tool_name = tool_info['name']
+                            tool_args = tool_info['args']
+                            
+                            if tool_name in ['read_file', 'read', 'file_read']:
+                                file_path = tool_args.get('file_path', tool_args.get('path', '')) if isinstance(tool_args, dict) else ''
+                                if file_path:
+                                    import os
+                                    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+                                    try:
+                                        rel_path = os.path.relpath(file_path, project_root)
+                                        yield {'type': 'file_read', 'path': rel_path}
+                                    except ValueError:
+                                        yield {'type': 'file_read', 'path': file_path}
+                            elif tool_name in ['write_todos', 'TodoWrite']:
+                                pass
+                            else:
+                                yield {
+                                    'type': 'tool_call',
+                                    'name': tool_name,
+                                    'args': tool_args
+                                }
+                        tool_call_buffer.clear()
+
                     if isinstance(chunk, dict):
                         # 检查 todos 状态
                         todos = chunk.get("todos", [])
@@ -188,55 +283,59 @@ class ChatAgent:
                                 'content': todos
                             }
                             last_todos = todos
-                        
-                        # 检查工具调用
-                        messages = chunk.get("messages", [])
-                        if messages:
-                            msg = messages[-1]
-                            
-                            # 检查工具调用请求
-                            if hasattr(msg, 'tool_calls') and msg.tool_calls:
-                                for tc in msg.tool_calls:
-                                    tool_name = tc.get('name') if isinstance(tc, dict) else getattr(tc, 'name', 'unknown')
-                                    tool_args = tc.get('args') if isinstance(tc, dict) else getattr(tc, 'args', {})
-                                    
-                                    # 处理特殊工具调用：只发送专用事件，不发送通用的 tool_call 事件
-                                    
-                                    # 1. 处理文件读取工具
-                                    if tool_name in ['read_file', 'read', 'file_read']:
-                                        file_path = tool_args.get('file_path', tool_args.get('path', ''))
-                                        if file_path:
-                                            # 转换为相对路径
-                                            import os
-                                            # 维持原有逻辑：项目根目录的上级目录，使路径包含项目文件夹名
-                                            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-                                            try:
-                                                rel_path = os.path.relpath(file_path, project_root)
-                                                yield {
-                                                    'type': 'file_read',
-                                                    'path': rel_path
-                                                }
-                                            except ValueError:
-                                                # 如果不在同一文件系统，使用原路径
-                                                yield {
-                                                    'type': 'file_read',
-                                                    'path': file_path
-                                                }
-                                        continue # 跳过通用 tool_call
-                                    
-                                    # 2. 处理 Todo 列表更新工具
-                                    if tool_name in ['write_todos', 'TodoWrite']:
-                                        # Todo 列表会由上面的 mode == "values" 逻辑检测到状态变化并发送 todos 事件
-                                        # 这里直接跳过通用的 tool_call 事件
-                                        continue
 
-                                    # 发送通用的工具调用事件
-                                    yield {
-                                        'type': 'tool_call',
-                                        'name': tool_name,
-                                        'args': tool_args
-                                    }
+                        if todos:
+                            if any(t.get('status') in ['pending', 'in_progress'] for t in todos if isinstance(t, dict)):
+                                phase = 'thinking'
+                            elif all(t.get('status') == 'completed' for t in todos if isinstance(t, dict)):
+                                phase = 'final'
+                            else:
+                                phase = None
+
+                            if phase and phase != last_phase:
+                                last_phase = phase
+                                yield {
+                                    'type': 'phase',
+                                    'phase': phase
+                                }
+                        
+                        # 注意：不再从 values 中提取 tool_calls 发送，因为已经在 messages 中处理了
+                        # 避免重复发送
+
             
+            # 发送剩余的工具调用
+            if tool_call_buffer:
+                for idx in sorted(tool_call_buffer.keys()):
+                    tool_info = tool_call_buffer[idx]
+                    try:
+                        if tool_info['args']:
+                            tool_info['args'] = json.loads(tool_info['args'])
+                    except json.JSONDecodeError:
+                        pass
+                    
+                    tool_name = tool_info['name']
+                    tool_args = tool_info['args']
+                    
+                    if tool_name in ['read_file', 'read', 'file_read']:
+                        file_path = tool_args.get('file_path', tool_args.get('path', '')) if isinstance(tool_args, dict) else ''
+                        if file_path:
+                            import os
+                            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+                            try:
+                                rel_path = os.path.relpath(file_path, project_root)
+                                yield {'type': 'file_read', 'path': rel_path}
+                            except ValueError:
+                                yield {'type': 'file_read', 'path': file_path}
+                    elif tool_name in ['write_todos', 'TodoWrite']:
+                        pass
+                    else:
+                        yield {
+                            'type': 'tool_call',
+                            'name': tool_name,
+                            'args': tool_args
+                        }
+                tool_call_buffer.clear()
+
             # 发送完成事件
             yield {
                 'type': 'done',
