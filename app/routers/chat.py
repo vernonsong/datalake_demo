@@ -220,20 +220,9 @@ async def resume_execution(
         
         logger.info(f"📤 恢复执行: thread_id={request.thread_id}, decision={request.decision}")
         
-        # 构造 HumanInTheLoopMiddleware 期望的格式
-        # 注意：这里假设只有一个工具调用需要确认
-        resume_value = {
-            "decisions": [
-                {
-                    "action_name": "platform_service",  # 工具名称
-                    "type": request.decision  # "approve" 或 "reject"
-                }
-            ]
-        }
-        
         # 使用 Command 恢复执行
         result = chat_agent.agent.invoke(
-            Command(resume=resume_value),
+            Command(resume=request.decision),
             config={"configurable": {"thread_id": request.thread_id}}
         )
         
