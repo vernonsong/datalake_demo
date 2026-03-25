@@ -149,6 +149,7 @@ class ChatAgent:
             # 使用 stream_mode="messages" 获取 token 级流式
             # 同时使用 stream_mode="values" 获取状态快照（包含 todos）
             tool_call_buffer = {}  # 缓存工具调用 chunks
+            last_state = None  # 保存最后的状态，用于检查中断
             
             for mode, chunk in self.agent.stream(
                 {"messages": deepagents_messages},
@@ -255,6 +256,8 @@ class ChatAgent:
                 
                 elif mode == "values":
                     # 状态快照 - 获取 todos 等信息
+                    last_state = chunk  # 保存最后的状态
+                    
                     # 先清空并发送缓存的工具调用（确保在状态更新前发送）
                     if tool_call_buffer:
                         for idx in sorted(tool_call_buffer.keys()):
@@ -353,11 +356,49 @@ class ChatAgent:
                         }
                 tool_call_buffer.clear()
 
-            # 发送完成事件
-            yield {
-                'type': 'done',
-                'content': '处理完成'
-            }
+            # 检查是否有中断
+            if last_state and '__interrupt__' in last_state:
+                interrupt_data = last_state['__interrupt__']
+                logger.info(f"🛑 检测到中断: {interrupt_data}")
+                logger.info(f"🛑 中断数据类型: {type(interrupt_data)}")
+                
+                # 将 Interrupt 对象转换为可序列化的格式
+                try:
+                    # 尝试将对象转换为字典
+                    if isinstance(interrupt_data, list):
+                        interrupt_info = []
+                        for item in interrupt_data:
+                            try:
+                                # 尝试访问对象属性
+                                interrupt_info.append({
+                                    'value': str(getattr(item, 'value', item)),
+                                    'resumable': bool(getattr(item, 'resumable', True)),
+                                    'ns': list(getattr(item, 'ns', [])),
+                                    'when': str(getattr(item, 'when', 'during'))
+                                })
+                            except Exception as e:
+                                logger.error(f"转换中断项失败: {e}")
+                                # 如果转换失败，使用字符串表示
+                                interrupt_info.append({'value': str(item)})
+                    else:
+                        # 如果不是列表，直接转换为字符串
+                        interrupt_info = [{'value': str(interrupt_data)}]
+                except Exception as e:
+                    logger.error(f"转换中断数据失败: {e}", exc_info=True)
+                    interrupt_info = [{'value': 'Tool execution requires approval'}]
+                
+                # 发送中断事件给前端
+                yield {
+                    'type': 'interrupt',
+                    'interrupt_info': interrupt_info,
+                    'thread_id': thread_id
+                }
+            else:
+                # 发送完成事件
+                yield {
+                    'type': 'done',
+                    'content': '处理完成'
+                }
             
         except Exception as e:
             logger.error(f"❌ 流式处理错误：{e}", exc_info=True)

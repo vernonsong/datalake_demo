@@ -28,6 +28,7 @@ def _validate_doc(platform: str, doc_path: str, doc_excerpt: str) -> None:
         "metadata": "skills/platform-skill/metadata-service/",
         "schedule": "skills/platform-skill/schedule-service/",
         "integration": "skills/platform-skill/integration-service/",
+        "sql": "skills/platform-skill/sql-service/",
     }
 
     prefix = allowed_prefixes.get(platform)
@@ -114,14 +115,16 @@ def platform_service(
     """
     from app.core.dependencies import (
         get_metadata_client,
-        get_schedule_client,
-        get_integration_client
-    )
+    get_schedule_client,
+    get_integration_client,
+    get_sql_execution_client
+)
 
     clients = {
         "metadata": get_metadata_client,
         "schedule": get_schedule_client,
         "integration": get_integration_client,
+        "sql": get_sql_execution_client,
     }
 
     if platform not in clients:

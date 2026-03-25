@@ -11,10 +11,60 @@ import re
 import logging
 from deepagents import create_deep_agent
 from deepagents.backends import LocalShellBackend
+from langchain.agents.middleware.human_in_the_loop import HumanInTheLoopMiddleware, InterruptOnConfig
+from langchain_core.messages import AIMessage
 
 from app.config import get_config
 
 logger = logging.getLogger(__name__)
+
+
+class DynamicHumanInTheLoopMiddleware(HumanInTheLoopMiddleware):
+    """支持动态判断逻辑的 HumanInTheLoopMiddleware"""
+    
+    def __init__(self, interrupt_on: dict, dynamic_conditions: dict):
+        super().__init__(interrupt_on=interrupt_on)
+        self.dynamic_conditions = dynamic_conditions
+
+    def after_model(self, state, runtime):
+        # 检查是否有需要动态中断的工具调用
+        messages = state["messages"]
+        if not messages:
+            return None
+            
+        last_ai_msg = next((msg for msg in reversed(messages) if isinstance(msg, AIMessage)), None)
+        if not last_ai_msg or not last_ai_msg.tool_calls:
+            return None
+
+        # 动态更新 interrupt_on 配置
+        current_interrupt_on = self.interrupt_on.copy()
+        
+        for tool_call in last_ai_msg.tool_calls:
+            tool_name = tool_call["name"]
+            logger.info(f"[DynamicHITL] 检查工具调用: {tool_name}, args: {tool_call.get('args', {})}")
+            
+            if tool_name in self.dynamic_conditions:
+                condition_func = self.dynamic_conditions[tool_name]
+                try:
+                    should_interrupt = condition_func(tool_call)
+                    logger.info(f"[DynamicHITL] {tool_name} 动态判断结果: {should_interrupt}")
+                    
+                    if should_interrupt:
+                        # 如果条件满足，添加中断配置
+                        self.interrupt_on[tool_name] = InterruptOnConfig(
+                            allowed_decisions=["approve", "reject"]
+                        )
+                        logger.info(f"[DynamicHITL] 已添加 {tool_name} 到中断配置")
+                except Exception as e:
+                    logger.error(f"动态中断判断失败: {e}", exc_info=True)
+        
+        try:
+            # 调用父类逻辑
+            logger.info(f"[DynamicHITL] 当前 interrupt_on 配置: {list(self.interrupt_on.keys())}")
+            return super().after_model(state, runtime)
+        finally:
+            # 恢复配置
+            self.interrupt_on = current_interrupt_on
 
 
 class TokenProvider:
@@ -132,6 +182,22 @@ def get_integration_client():
 
 
 @lru_cache()
+def get_sql_execution_client():
+    """获取SQL执行服务客户端（依赖注入）"""
+    from app.core.clients.sql_execution_client import SqlExecutionClient
+    config = get_app_config()
+    platform_config = config.get("platform", {}).get("sql", {})
+    base_url = platform_config.get("url")
+    if not base_url:
+        raise ValueError("platform.sql.url is required in config")
+    base_url = base_url.rsplit('/api/', 1)[0]
+    return SqlExecutionClient(
+        base_url=base_url,
+        token_provider=get_token_provider().get_token
+    )
+
+
+@lru_cache()
 def get_lake_service_client():
     """获取湖服务客户端（依赖注入）"""
     from app.core.clients.lake_service_client import LakeServiceClient
@@ -238,7 +304,7 @@ def _should_interrupt_platform_service(tool_call: dict) -> bool:
         return True
 
 
-@lru_cache()
+# @lru_cache()  # 临时禁用缓存，以便测试中断功能
 def get_deep_agent():
     """获取 DeepAgent 智能体（依赖注入）"""
     from deepagents import create_deep_agent
@@ -259,6 +325,26 @@ def get_deep_agent():
 
     from app.core.system_prompt import SYSTEM_PROMPT
 
+    # 静态中断配置
+    static_interrupt_on = {
+        "write_file": True,
+        "read_file": False,
+        "edit_file": False,
+        "execute_command": False,
+        "create_directory": False,
+    }
+    
+    # 动态中断条件
+    dynamic_conditions = {
+        "platform_service": _should_interrupt_platform_service
+    }
+    
+    # 创建动态中间件
+    dynamic_middleware = DynamicHumanInTheLoopMiddleware(
+        interrupt_on=static_interrupt_on,
+        dynamic_conditions=dynamic_conditions
+    )
+
     return create_deep_agent(
         model=llm,
         system_prompt=SYSTEM_PROMPT,
@@ -268,16 +354,8 @@ def get_deep_agent():
             str(PROJECT_ROOT / "skills/platform-skill"),
         ],
         tools=platform_tools + batch_tools,
-        interrupt_on={
-                "write_file": True,
-                "read_file": False,
-                "edit_file": False,
-                "execute_command": False,
-                "create_directory": False,
-                "platform_service": {
-                    "condition": _should_interrupt_platform_service
-                },
-            },
+        interrupt_on=None,  # 不使用内置的 HumanInTheLoopMiddleware
+        middleware=[dynamic_middleware],  # 使用自定义的动态中间件
         checkpointer=checkpointer,
     )
 

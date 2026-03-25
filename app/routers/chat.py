@@ -10,8 +10,15 @@ from app.settings import settings
 from pathlib import Path
 import json
 import logging
+import shutil
 
 logger = logging.getLogger(__name__)
+
+
+class ResumeRequest(BaseModel):
+    """恢复中断执行的请求"""
+    thread_id: str
+    decision: str  # "approve" 或 "reject"
 
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -100,6 +107,12 @@ def stream_generator(chat_agent: ChatAgent, user_id: str, message: str, conv_id:
                 # 批量处理进度
                 progress_data = event.get('data', {})
                 yield f"data: {json.dumps({'type': 'batch_progress', 'data': progress_data}, ensure_ascii=False)}\n\n"
+            
+            elif event_type == 'interrupt':
+                # 中断事件 - 需要用户确认
+                interrupt_info = event.get('interrupt_info', {})
+                thread_id = event.get('thread_id', '')
+                yield f"data: {json.dumps({'type': 'interrupt', 'interrupt_info': interrupt_info, 'thread_id': thread_id}, ensure_ascii=False)}\n\n"
             
             elif event_type == 'done':
                 # 处理完成
@@ -191,3 +204,57 @@ async def chat(
             result['uploaded_files'] = [f.model_dump() for f in uploaded_files_info]
         
         return ChatResponse(**result)
+
+
+@router.post("/resume")
+async def resume_execution(
+    request: ResumeRequest,
+    chat_agent: ChatAgent = Depends(get_chat_agent)
+):
+    """恢复中断的执行
+    
+    当用户确认或拒绝操作后，调用此接口恢复执行
+    """
+    try:
+        from langgraph.types import Command
+        
+        logger.info(f"📤 恢复执行: thread_id={request.thread_id}, decision={request.decision}")
+        
+        # 构造 HumanInTheLoopMiddleware 期望的格式
+        # 注意：这里假设只有一个工具调用需要确认
+        resume_value = {
+            "decisions": [
+                {
+                    "action_name": "platform_service",  # 工具名称
+                    "type": request.decision  # "approve" 或 "reject"
+                }
+            ]
+        }
+        
+        # 使用 Command 恢复执行
+        result = chat_agent.agent.invoke(
+            Command(resume=resume_value),
+            config={"configurable": {"thread_id": request.thread_id}}
+        )
+        
+        # 提取最后的 AI 消息
+        messages = result.get("messages", [])
+        if messages:
+            last_message = messages[-1]
+            content = last_message.content if hasattr(last_message, 'content') else str(last_message)
+            
+            return {
+                "success": True,
+                "message": content,
+                "thread_id": request.thread_id
+            }
+        else:
+            return {
+                "success": True,
+                "message": "操作已处理",
+                "thread_id": request.thread_id
+            }
+            
+    except Exception as e:
+        logger.error(f"❌ 恢复执行失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"恢复执行失败: {str(e)}")

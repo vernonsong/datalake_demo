@@ -1,4 +1,4 @@
 source_db,source_table,source_field,source_type,target_db,target_table,target_field,target_type,mapping_type
-source_db,order_info,id,int,target_db,dw_order,id,int,直接映射
-source_db,order_info,name,string,target_db,dw_order,name,nvarchar,直接映射
-source_db,order_info,created_at,timestamp,target_db,dw_order,created_at,datetime2,直接映射
+hive,dw_order,id,int,dws,dw_order,id,int,直接映射
+hive,dw_order,name,string,dws,dw_order,name,string,直接映射
+hive,dw_order,created_at,timestamp,dws,dw_order,created_at,timestamp,直接映射

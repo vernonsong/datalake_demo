@@ -678,6 +678,10 @@ function Chat() {
   
   // 批量处理进度状态管理
   const batchProgressRef = useRef(null);
+  
+  // 中断状态管理
+  const [pendingInterrupt, setPendingInterrupt] = useState(null); // { interrupt_info, thread_id, tool_call }
+  const lastToolCallRef = useRef(null); // 保存最后的工具调用
 
   const getActiveTodoIndex = (todos) => {
     if (!Array.isArray(todos) || todos.length === 0) {
@@ -760,6 +764,55 @@ function Chat() {
 
   const handleRemoveFile = (index) => {
     setSelectedFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // 恢复中断的执行
+  const handleResumeExecution = async (decision) => {
+    if (!pendingInterrupt) return;
+    
+    try {
+      const response = await fetch('http://localhost:8000/chat/resume', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          thread_id: pendingInterrupt.thread_id,
+          decision: decision
+        })
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        // 添加结果消息
+        const resultMessage = {
+          role: 'assistant',
+          content: result.message,
+          timestamp: new Date().toISOString(),
+        };
+        setMessages(prev => [...prev, resultMessage]);
+      } else {
+        // 显示错误
+        const errorMessage = {
+          type: 'error',
+          content: result.message || '操作失败',
+          timestamp: new Date().toISOString(),
+        };
+        setMessages(prev => [...prev, errorMessage]);
+      }
+    } catch (error) {
+      console.error('Resume execution failed:', error);
+      const errorMessage = {
+        type: 'error',
+        content: `恢复执行失败: ${error.message}`,
+        timestamp: new Date().toISOString(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      // 清除中断状态
+      setPendingInterrupt(null);
+    }
   };
 
   // 发送消息
@@ -960,6 +1013,9 @@ function Chat() {
             args: event.args,
             timestamp: new Date().toISOString(),
           };
+          
+          // 保存最后的工具调用，用于中断时显示
+          lastToolCallRef.current = toolInfo;
 
           const computedActive = getActiveTodoIndex(currentTodosRef.current);
           const resolvedTodoIndex = activeTodoIndexRef.current ?? computedActive;
@@ -1120,6 +1176,24 @@ function Chat() {
               }
             });
           }
+        } else if (event.type === 'interrupt') {
+          // 中断事件 - 需要用户确认
+          const { interrupt_info, thread_id } = event;
+          
+          // 保存中断信息和最后的工具调用
+          setPendingInterrupt({
+            interrupt_info,
+            thread_id,
+            tool_call: lastToolCallRef.current // 保存最后的工具调用信息
+          });
+          
+          // 停止思考动画
+          if (thinkingUpdateTimerRef.current) {
+            clearTimeout(thinkingUpdateTimerRef.current);
+            thinkingUpdateTimerRef.current = null;
+          }
+          updateThinkingMessage(false);
+          
         } else if (event.type === 'done') {
           if (thinkingUpdateTimerRef.current) {
             clearTimeout(thinkingUpdateTimerRef.current);
@@ -1323,6 +1397,89 @@ function Chat() {
           />
         </Box>
       </Box>
+
+      {/* 中断确认对话框 */}
+      {pendingInterrupt && (
+        <Box
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+          }}
+        >
+          <Card
+            padding="xl"
+            bg="#ffffff"
+            withBorder
+            style={{
+              maxWidth: '600px',
+              width: '90%',
+              borderColor: '#228be6',
+              borderWidth: 2,
+            }}
+          >
+            <Stack gap="md">
+              <Group gap="sm">
+                <ThemeIcon variant="light" size="lg" color="orange">
+                  <IconBrain size={24} />
+                </ThemeIcon>
+                <Title order={4} c="gray.9">⚠️ 操作需要确认</Title>
+              </Group>
+
+              <Divider />
+
+              {pendingInterrupt.tool_call && (
+                <Box>
+                  <Text size="sm" fw={600} c="gray.7" mb="xs">
+                    工具调用:
+                  </Text>
+                  <Card padding="sm" bg="#f8f9fa" withBorder>
+                    <Stack gap="xs">
+                      <Group gap="xs">
+                        <IconTool size={16} />
+                        <Text size="sm" fw={600}>{pendingInterrupt.tool_call.name}</Text>
+                      </Group>
+                      <Code block style={{ fontSize: '12px', maxHeight: '200px', overflow: 'auto' }}>
+                        {JSON.stringify(pendingInterrupt.tool_call.args, null, 2)}
+                      </Code>
+                    </Stack>
+                  </Card>
+                </Box>
+              )}
+
+              <Text size="sm" c="dimmed">
+                此操作可能会修改系统数据，请确认是否继续执行。
+              </Text>
+
+              <Group justify="flex-end" gap="sm" mt="md">
+                <ActionIcon
+                  variant="subtle"
+                  color="gray"
+                  size="lg"
+                  onClick={() => handleResumeExecution('reject')}
+                >
+                  <IconX size={20} />
+                </ActionIcon>
+                <ActionIcon
+                  variant="filled"
+                  color="blue"
+                  size="lg"
+                  onClick={() => handleResumeExecution('approve')}
+                >
+                  <IconCheck size={20} />
+                </ActionIcon>
+              </Group>
+            </Stack>
+          </Card>
+        </Box>
+      )}
     </Box>
   );
 }

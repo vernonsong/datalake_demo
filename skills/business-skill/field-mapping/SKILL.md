@@ -65,6 +65,20 @@ python3 skills/business-skill/field-mapping/mapping_script.py {单号}.csv
 - {单号}-mapped.csv：映射结果
 - {单号}-ddl.sql：DDL 建表语句
 
+#### 步骤 4：执行SQL
+读取上一步生成的DDL文件内容，并调用SQL服务执行建表语句。
+
+1. 读取DDL文件内容：
+```bash
+cat {单号}-ddl.sql
+```
+
+2. 调用SQL服务执行：
+遵循SQL服务接口说明，调用平台服务执行SQL。
+- `doc_path` 与 `doc_excerpt`（从SQL服务接口文档复制，包含 `DOC_GUARD:`）
+- `sql`: DDL文件内容
+- `database`: 目标数据库名
+
 ---
 
 ## 批量处理模式
