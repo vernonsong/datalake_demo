@@ -28,19 +28,25 @@ const apiClient = axios.create({
  * - {type: "done", content: "完成"}
  * - {type: "error", error: "错误信息"}
  */
-export async function* streamChat({ message, userId = 'default_user', conversationId = null }) {
+export async function* streamChat({ message, userId = 'default_user', conversationId = null, files = [] }) {
   try {
+    const formData = new FormData();
+    formData.append('message', message);
+    formData.append('user_id', userId);
+    if (conversationId) {
+      formData.append('conversation_id', conversationId);
+    }
+    formData.append('stream', 'true');
+    
+    if (files && files.length > 0) {
+      files.forEach((file) => {
+        formData.append('files', file);
+      });
+    }
+
     const response = await fetch(`${API_BASE_URL}/chat/`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        message,
-        user_id: userId,
-        conversation_id: conversationId,
-        stream: true,
-      }),
+      body: formData,
     });
 
     if (!response.ok) {
@@ -121,13 +127,26 @@ export async function* streamChat({ message, userId = 'default_user', conversati
  * @param {string} params.conversationId - 会话 ID（可选）
  * @returns {Promise<Object>} 返回对话响应
  */
-export async function chat({ message, userId = 'default_user', conversationId = null }) {
+export async function chat({ message, userId = 'default_user', conversationId = null, files = [] }) {
   try {
-    const response = await apiClient.post('/chat/', {
-      message,
-      user_id: userId,
-      conversation_id: conversationId,
-      stream: false,
+    const formData = new FormData();
+    formData.append('message', message);
+    formData.append('user_id', userId);
+    if (conversationId) {
+      formData.append('conversation_id', conversationId);
+    }
+    formData.append('stream', 'false');
+
+    if (files && files.length > 0) {
+      files.forEach((file) => {
+        formData.append('files', file);
+      });
+    }
+
+    const response = await apiClient.post('/chat/', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
     });
 
     return response.data;

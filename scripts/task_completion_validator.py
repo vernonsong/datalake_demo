@@ -151,7 +151,7 @@ class TaskCompletionValidator:
     def _chat_stream_collect(self, message: str):
         resp = requests.post(
             f"{self.api_base}/chat/",
-            json={"message": message, "stream": True},
+            data={"message": message, "stream": "true"},
             stream=True,
             timeout=(5, 240),
         )

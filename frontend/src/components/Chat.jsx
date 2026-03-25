@@ -36,7 +36,8 @@ import {
   IconCircleDashed,
   IconCircle,
   IconTerminal2,
-  IconX
+  IconX,
+  IconPaperclip
 } from '@tabler/icons-react';
 import { useDisclosure } from '@mantine/hooks';
 
@@ -47,6 +48,132 @@ const spinAnimation = `
     to { transform: rotate(360deg); }
   }
 `;
+
+/**
+ * 批量处理进度组件
+ */
+function BatchProgress({ data }) {
+  const [isCollapsed, { toggle }] = useDisclosure(false);
+  
+  if (!data || !data.items || data.items.length === 0) {
+    return null;
+  }
+
+  const { total = 0, items = [] } = data;
+  const processedCount = items.filter(item => 
+    item.status === 'success' || item.status === 'completed' || item.status === 'failed'
+  ).length;
+  const successCount = items.filter(item => 
+    item.status === 'success' || item.status === 'completed'
+  ).length;
+  const failedCount = items.filter(item => item.status === 'failed').length;
+  const processingItem = items.find(item => item.status === 'processing');
+  
+  const percentage = total > 0 ? Math.round((processedCount / total) * 100) : 0;
+
+  return (
+    <Box mb="xl" style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+      {/* 批量处理进度 Header */}
+      <Card 
+        padding="md" 
+        bg="#ffffff" 
+        withBorder
+        style={{ borderColor: '#228be6', borderRadius: 8 }}
+      >
+        <UnstyledButton onClick={toggle} style={{ width: '100%' }}>
+          <Group justify="space-between" mb={isCollapsed ? 0 : 'sm'}>
+            <Group gap="xs">
+              <ThemeIcon variant="light" size="sm" color="blue">
+                {isCollapsed ? <IconChevronRight size={14} /> : <IconChevronDown size={14} />}
+              </ThemeIcon>
+              <Text size="sm" fw={600} c="blue.7">
+                📦 批量处理进度
+              </Text>
+              <Badge size="sm" color={processedCount === total ? 'green' : 'blue'}>
+                {processedCount}/{total}
+              </Badge>
+              <Text size="xs" c="dimmed">
+                {percentage}%
+              </Text>
+            </Group>
+            <Group gap="xs">
+              {successCount > 0 && (
+                <Badge size="sm" color="green" variant="light">
+                  ✓ {successCount}
+                </Badge>
+              )}
+              {failedCount > 0 && (
+                <Badge size="sm" color="red" variant="light">
+                  ✗ {failedCount}
+                </Badge>
+              )}
+            </Group>
+          </Group>
+        </UnstyledButton>
+
+        <Collapse in={!isCollapsed}>
+          <Stack gap="xs" mt="sm">
+            {items.map((item, index) => {
+              const isPending = item.status === 'pending';
+              const isProcessing = item.status === 'processing';
+              const isSuccess = item.status === 'success' || item.status === 'completed';
+              const isFailed = item.status === 'failed';
+              
+              let icon;
+              let color;
+              if (isPending) {
+                icon = <IconCircle size={16} />;
+                color = 'gray.5';
+              } else if (isProcessing) {
+                icon = <IconCircleDashed size={16} style={{ animation: 'spin 2s linear infinite' }} />;
+                color = 'blue.6';
+              } else if (isSuccess) {
+                icon = <IconCircleCheckFilled size={16} />;
+                color = 'green.6';
+              } else if (isFailed) {
+                icon = <IconX size={16} />;
+                color = 'red.6';
+              }
+
+              return (
+                <Box 
+                  key={index}
+                  p="sm"
+                  bg={isProcessing ? '#f0f7ff' : '#f8f9fa'}
+                  style={{ 
+                    borderRadius: 6,
+                    border: isProcessing ? '1px solid #228be6' : '1px solid #dee2e6'
+                  }}
+                >
+                  <Group gap="sm" wrap="nowrap">
+                    <ThemeIcon variant="transparent" size="sm" c={color}>
+                      {icon}
+                    </ThemeIcon>
+                    <Box flex={1}>
+                      <Text size="sm" fw={500} c={isPending ? 'gray.6' : 'gray.9'}>
+                        {item.item?.单号 || `项目 ${item.index}`}
+                      </Text>
+                      {item.message && (
+                        <Text size="xs" c="dimmed" lineClamp={2} mt={4}>
+                          {item.message}
+                        </Text>
+                      )}
+                      {item.error && (
+                        <Text size="xs" c="red.6" lineClamp={2} mt={4}>
+                          错误: {item.error}
+                        </Text>
+                      )}
+                    </Box>
+                  </Group>
+                </Box>
+              );
+            })}
+          </Stack>
+        </Collapse>
+      </Card>
+    </Box>
+  );
+}
 
 /**
  * 思考过程组件（包含所有待办项和全局工具调用）
@@ -442,6 +569,7 @@ function Message({ message }) {
   const isTool = message.type === 'tool';
   const isError = message.type === 'error';
   const isThinking = message.type === 'thinking';
+  const isBatchProgress = message.type === 'batch_progress';
 
   if (isThinking) {
     return (
@@ -450,6 +578,14 @@ function Message({ message }) {
           data={message.thinkingData} 
           isRunning={message.isRunning} 
         />
+      </Box>
+    );
+  }
+
+  if (isBatchProgress) {
+    return (
+      <Box mb="lg">
+        <BatchProgress data={message.batchData} />
       </Box>
     );
   }
@@ -519,6 +655,8 @@ function Chat() {
   const [isLoading, setIsLoading] = useState(false);
   const [conversationId, setConversationId] = useState(null);
   const [inputValue, setInputValue] = useState('');
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const fileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
   const abortControllerRef = useRef(null);
   
@@ -537,6 +675,9 @@ function Chat() {
   const lastTodoIndexRef = useRef(null);
   const phaseRef = useRef(null);
   const thinkingUpdateTimerRef = useRef(null);
+  
+  // 批量处理进度状态管理
+  const batchProgressRef = useRef(null);
 
   const getActiveTodoIndex = (todos) => {
     if (!Array.isArray(todos) || todos.length === 0) {
@@ -584,16 +725,62 @@ function Chat() {
     scrollToBottom();
   }, [messages]);
 
+  const handleFileSelect = (e) => {
+    const files = Array.from(e.target.files);
+    const validFiles = [];
+    const MAX_SIZE = 10 * 1024 * 1024; // 10MB
+    const ALLOWED_EXTS = ['.xlsx', '.xls', '.csv'];
+
+    files.forEach(file => {
+      const ext = '.' + file.name.split('.').pop().toLowerCase();
+      if (!ALLOWED_EXTS.includes(ext)) {
+        alert(`不支持的文件类型: ${file.name}\n仅支持 .xlsx, .xls, .csv`);
+        return;
+      }
+      if (file.size > MAX_SIZE) {
+        alert(`文件过大 (超过 10MB): ${file.name}`);
+        return;
+      }
+      validFiles.push(file);
+    });
+
+    if (validFiles.length > 0) {
+      if (selectedFiles.length + validFiles.length > 5) {
+        alert('一次最多上传 5 个文件');
+        return;
+      }
+      setSelectedFiles(prev => [...prev, ...validFiles]);
+    }
+    
+    // 清空 input，允许重复选择同名文件
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handleRemoveFile = (index) => {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
   // 发送消息
   const handleSend = async () => {
-    if (!inputValue.trim() || isLoading) return;
+    if ((!inputValue.trim() && selectedFiles.length === 0) || isLoading) return;
 
     const content = inputValue.trim();
-    setInputValue('');
+    const filesToSend = [...selectedFiles];
     
+    setInputValue('');
+    setSelectedFiles([]);
+    
+    let displayContent = content;
+    if (filesToSend.length > 0) {
+        const fileNames = filesToSend.map(f => `[文件] ${f.name}`).join('\n');
+        displayContent = content ? `${content}\n${fileNames}` : fileNames;
+    }
+
     const userMessage = {
       role: 'user',
-      content,
+      content: displayContent,
       timestamp: new Date().toISOString(),
     };
     setMessages(prev => [...prev, userMessage]);
@@ -607,9 +794,10 @@ function Chat() {
 
     try {
       const generator = streamChat({
-        message: content,
+        message: content || ' ', // 确保 message 不为空
         userId: 'default_user',
         conversationId: currentConversationId,
+        files: filesToSend,
       });
 
       let aiMessage = {
@@ -632,6 +820,7 @@ function Chat() {
       hasTodosStartedRef.current = false;
       lastTodoIndexRef.current = null;
       phaseRef.current = null;
+      batchProgressRef.current = null;
 
       const updateThinkingMessage = (isRunning = true) => {
         const thinkingData = {
@@ -839,6 +1028,98 @@ function Chat() {
             }
           }
           updateThinkingMessage();
+        } else if (event.type === 'batch_progress') {
+          // 批量处理进度事件
+          const progressData = event.data || {};
+          
+          if (progressData.type === 'batch_start') {
+            // 初始化批量处理进度
+            batchProgressRef.current = {
+              total: progressData.total,
+              items: Array.from({ length: progressData.total }, (_, i) => ({
+                index: i + 1,
+                status: 'pending',
+                item: null
+              }))
+            };
+          } else if (progressData.type === 'item_start') {
+            // 订单开始处理
+            if (batchProgressRef.current) {
+              const itemIndex = progressData.index - 1;
+              if (itemIndex >= 0 && itemIndex < batchProgressRef.current.items.length) {
+                batchProgressRef.current.items[itemIndex] = {
+                  index: progressData.index,
+                  status: 'processing',
+                  item: progressData.item
+                };
+              }
+            }
+          } else if (progressData.type === 'item_complete') {
+            // 订单处理完成
+            if (batchProgressRef.current) {
+              const itemIndex = progressData.index - 1;
+              if (itemIndex >= 0 && itemIndex < batchProgressRef.current.items.length) {
+                batchProgressRef.current.items[itemIndex] = {
+                  index: progressData.index,
+                  status: progressData.status,
+                  item: progressData.item,
+                  message: progressData.message
+                };
+              }
+            }
+          } else if (progressData.type === 'item_error') {
+            // 订单处理失败
+            if (batchProgressRef.current) {
+              const itemIndex = progressData.index - 1;
+              if (itemIndex >= 0 && itemIndex < batchProgressRef.current.items.length) {
+                batchProgressRef.current.items[itemIndex] = {
+                  index: progressData.index,
+                  status: 'failed',
+                  item: progressData.item,
+                  error: progressData.error
+                };
+              }
+            }
+          }
+          
+          // 更新批量处理进度消息
+          if (batchProgressRef.current) {
+            setMessages(prev => {
+              // 查找最后一个用户消息的索引
+              let lastUserIndex = -1;
+              for (let i = prev.length - 1; i >= 0; i--) {
+                if (prev[i].role === 'user') {
+                  lastUserIndex = i;
+                  break;
+                }
+              }
+
+              // 查找最后一个批量处理进度消息的索引
+              let lastBatchProgressIndex = -1;
+              for (let i = prev.length - 1; i >= 0; i--) {
+                if (prev[i].type === 'batch_progress') {
+                  lastBatchProgressIndex = i;
+                  break;
+                }
+              }
+
+              const batchProgressMessage = {
+                type: 'batch_progress',
+                batchData: { ...batchProgressRef.current },
+                timestamp: new Date().toISOString(),
+              };
+
+              // 如果已存在批量处理进度消息且在当前轮次，更新它
+              if (lastBatchProgressIndex >= 0 && lastBatchProgressIndex > lastUserIndex) {
+                const newMessages = [...prev];
+                newMessages[lastBatchProgressIndex] = batchProgressMessage;
+                return newMessages;
+              } else {
+                // 否则，在最后一个用户消息之后插入新的批量处理进度消息
+                return [...prev.slice(0, lastUserIndex + 1), batchProgressMessage, ...prev.slice(lastUserIndex + 1)];
+              }
+            });
+          }
         } else if (event.type === 'done') {
           if (thinkingUpdateTimerRef.current) {
             clearTimeout(thinkingUpdateTimerRef.current);
@@ -951,8 +1232,38 @@ function Chat() {
       </ScrollArea>
 
       {/* Input */}
-      <Box p="md" bg="#ffffff" style={{ borderTop: '1px solid #dee2e6' }}>
+      {selectedFiles.length > 0 && (
+        <Box px="md" pt="xs" pb={0} bg="#ffffff" style={{ borderTop: '1px solid #dee2e6' }}>
+            <Box style={{ maxWidth: '800px', margin: '0 auto' }}>
+                <Group gap="xs">
+                    {selectedFiles.map((file, index) => (
+                        <Badge 
+                            key={index} 
+                            variant="light" 
+                            color="blue" 
+                            rightSection={
+                                <ActionIcon size="xs" color="blue" variant="transparent" onClick={() => handleRemoveFile(index)}>
+                                    <IconX size={12} />
+                                </ActionIcon>
+                            }
+                        >
+                            {file.name}
+                        </Badge>
+                    ))}
+                </Group>
+            </Box>
+        </Box>
+      )}
+      <Box p="md" bg="#ffffff" style={{ borderTop: selectedFiles.length > 0 ? 'none' : '1px solid #dee2e6' }}>
         <Box style={{ maxWidth: '800px', margin: '0 auto' }}>
+          <input
+            type="file"
+            multiple
+            ref={fileInputRef}
+            style={{ display: 'none' }}
+            onChange={handleFileSelect}
+            accept=".xlsx,.xls,.csv"
+          />
           <TextInput
             value={inputValue}
             onChange={(e) => setInputValue(e.currentTarget.value)}
@@ -978,6 +1289,16 @@ function Chat() {
             }}
             rightSection={
               <Group gap="xs" mr="xs">
+                <ActionIcon 
+                    onClick={() => fileInputRef.current?.click()} 
+                    variant="subtle" 
+                    color="gray" 
+                    size="sm"
+                    disabled={isLoading}
+                    title="上传 Excel/CSV 文件"
+                >
+                    <IconPaperclip size={16} />
+                </ActionIcon>
                 {isLoading && (
                   <ActionIcon
                     onClick={handleCancel}
@@ -990,7 +1311,7 @@ function Chat() {
                 )}
                 <ActionIcon 
                   onClick={handleSend} 
-                  disabled={isLoading || !inputValue.trim()}
+                  disabled={isLoading || (!inputValue.trim() && selectedFiles.length === 0)}
                   variant="filled" 
                   color="blue" 
                   size="sm"

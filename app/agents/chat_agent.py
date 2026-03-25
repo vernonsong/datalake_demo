@@ -113,6 +113,7 @@ class ChatAgent:
         1. token 级流式文本（stream_mode="messages"）
         2. todo 列表状态更新
         3. 工具调用记录
+        4. 批量处理进度（batch_progress）
         
         参考：https://docs.langchain.com/oss/python/deepagents/frontend/overview
         
@@ -128,6 +129,7 @@ class ChatAgent:
             - {type: "todos", content: [...]}  # todo 列表更新
             - {type: "tool_call", name: "工具名", args: {...}}  # 工具调用请求
             - {type: "file_read", path: "相对路径"}  # 文件读取事件
+            - {type: "batch_progress", data: {...}}  # 批量处理进度
             - {type: "done", content: "完成"}
         """
         logger.info(f"💬 收到流式消息：{user_id} - {message[:100]}...")
@@ -164,10 +166,25 @@ class ChatAgent:
                         if node_name in ['tool_responses', 'write_tool_response']:
                             continue
                     
-                    # 检查消息类型，过滤工具响应
+                    # 检查消息类型，处理工具响应
                     msg_type = type(msg).__name__
                     if 'ToolMessage' in msg_type:
-                        # 工具响应消息，跳过不输出
+                        # 工具响应消息，检查是否包含批量处理进度
+                        if hasattr(msg, 'content') and msg.content:
+                            content_str = str(msg.content)
+                            # 解析 [BATCH_PROGRESS] 标记
+                            import re
+                            progress_matches = re.findall(r'\[BATCH_PROGRESS\]\s*(\{.*?\})', content_str, re.DOTALL)
+                            for progress_json in progress_matches:
+                                try:
+                                    progress_data = json.loads(progress_json)
+                                    yield {
+                                        'type': 'batch_progress',
+                                        'data': progress_data
+                                    }
+                                except json.JSONDecodeError:
+                                    pass
+                        # 跳过工具响应的常规输出
                         continue
                     
                     # 处理工具调用 chunks

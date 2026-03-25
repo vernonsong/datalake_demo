@@ -1,6 +1,11 @@
 # 获取数据库列表
 
 DOC_GUARD: 8d3f8c2e0a2b4f7a
+REQUIRES_CONFIRMATION: false
+
+## 说明
+
+本接口为查询操作，不会修改系统数据，无需用户确认。
 
 ## 接口信息
 

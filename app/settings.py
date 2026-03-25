@@ -33,6 +33,15 @@ class AliCloudSettings:
     ALI_API_KEY: Optional[str] = None
 
 
+class FileUploadSettings:
+    """文件上传配置"""
+    ENABLED: bool
+    MAX_SIZE: int
+    ALLOWED_EXTENSIONS: list[str]
+    TEMP_DIR: str
+    CLEANUP_HOURS: int
+
+
 class Settings:
     """应用设置"""
 
@@ -60,6 +69,15 @@ class Settings:
 
         self.ali_cloud = AliCloudSettings()
         self.ali_cloud.ALI_API_KEY = os.getenv("ALI_API_KEY")
+
+        self.file_upload = FileUploadSettings()
+        enabled_str = os.getenv("FILE_UPLOAD_ENABLED")
+        self.file_upload.ENABLED = enabled_str.lower() == "true" if enabled_str else False
+        self.file_upload.MAX_SIZE = int(os.getenv("FILE_UPLOAD_MAX_SIZE"))
+        extensions_str = os.getenv("FILE_UPLOAD_ALLOWED_EXTENSIONS")
+        self.file_upload.ALLOWED_EXTENSIONS = [ext.strip() for ext in extensions_str.split(",")] if extensions_str else []
+        self.file_upload.TEMP_DIR = os.getenv("FILE_UPLOAD_TEMP_DIR")
+        self.file_upload.CLEANUP_HOURS = int(os.getenv("FILE_UPLOAD_CLEANUP_HOURS"))
 
     @property
     def app_name(self) -> str:
@@ -100,6 +118,26 @@ class Settings:
     @property
     def ali_api_key(self) -> Optional[str]:
         return self.ali_cloud.ALI_API_KEY
+
+    @property
+    def file_upload_enabled(self) -> bool:
+        return self.file_upload.ENABLED
+
+    @property
+    def file_upload_max_size(self) -> int:
+        return self.file_upload.MAX_SIZE
+
+    @property
+    def file_upload_allowed_extensions(self) -> list[str]:
+        return self.file_upload.ALLOWED_EXTENSIONS
+
+    @property
+    def file_upload_temp_dir(self) -> str:
+        return self.file_upload.TEMP_DIR
+
+    @property
+    def file_upload_cleanup_hours(self) -> int:
+        return self.file_upload.CLEANUP_HOURS
 
 
 settings = Settings()

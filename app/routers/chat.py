@@ -1,13 +1,30 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
 from fastapi.responses import StreamingResponse
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel
 from app.core.dependencies import get_chat_agent
 from app.agents.chat_agent import ChatAgent
+from app.utils.file_validator import FileValidator
+from app.utils.file_storage import FileStorage
+from app.settings import settings
+from pathlib import Path
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(prefix="/chat", tags=["chat"])
+
+file_validator = FileValidator(
+    allowed_extensions=settings.file_upload_allowed_extensions,
+    max_file_size=settings.file_upload_max_size
+)
+
+file_storage = FileStorage(
+    temp_dir=settings.file_upload_temp_dir,
+    cleanup_after_hours=settings.file_upload_cleanup_hours
+)
 
 
 class ChatRequest(BaseModel):
@@ -18,12 +35,21 @@ class ChatRequest(BaseModel):
     stream: Optional[bool] = False
 
 
+class UploadedFileInfo(BaseModel):
+    """上传文件信息"""
+    original_name: str
+    file_id: str
+    size: int
+    type: str
+
+
 class ChatResponse(BaseModel):
     """聊天响应"""
     success: bool
     message: str
     conversation_id: Optional[str] = None
     workflow_json: Optional[dict] = None
+    uploaded_files: Optional[List[UploadedFileInfo]] = None
 
 
 def stream_generator(chat_agent: ChatAgent, user_id: str, message: str, conv_id: Optional[str] = None):
@@ -70,6 +96,11 @@ def stream_generator(chat_agent: ChatAgent, user_id: str, message: str, conv_id:
                 phase = event.get('phase', '')
                 yield f"data: {json.dumps({'type': 'phase', 'phase': phase}, ensure_ascii=False)}\n\n"
             
+            elif event_type == 'batch_progress':
+                # 批量处理进度
+                progress_data = event.get('data', {})
+                yield f"data: {json.dumps({'type': 'batch_progress', 'data': progress_data}, ensure_ascii=False)}\n\n"
+            
             elif event_type == 'done':
                 # 处理完成
                 yield f"data: {json.dumps({'type': 'done', 'content': event.get('content', '处理完成')}, ensure_ascii=False)}\n\n"
@@ -87,19 +118,60 @@ def stream_generator(chat_agent: ChatAgent, user_id: str, message: str, conv_id:
 
 
 @router.post("/")
-def chat(
-    request: ChatRequest,
+async def chat(
+    message: str = Form(...),
+    user_id: Optional[str] = Form("default_user"),
+    conversation_id: Optional[str] = Form(None),
+    stream: Optional[bool] = Form(False),
+    files: Optional[List[UploadFile]] = File(None),
     chat_agent: ChatAgent = Depends(get_chat_agent)
 ):
-    """聊天接口（支持流式和非流式）"""
-    if request.stream:
-        # 流式返回
+    """聊天接口（支持流式和非流式，支持文件上传）"""
+    
+    uploaded_files_info = []
+    
+    if files and settings.file_upload_enabled:
+        if len(files) > 5:
+            raise HTTPException(status_code=400, detail="单次最多上传5个文件")
+        
+        for file in files:
+            is_valid, error = await file_validator.validate(file)
+            if not is_valid:
+                raise HTTPException(status_code=400, detail=f"文件验证失败: {error}")
+            
+            try:
+                file_id, file_path, file_size = await file_storage.save_file(file)
+                
+                ext = Path(file.filename).suffix.lower()
+                file_type = "excel" if ext in ['.xlsx', '.xls'] else "csv"
+                
+                uploaded_files_info.append(UploadedFileInfo(
+                    original_name=file.filename,
+                    file_id=file_id,
+                    size=file_size,
+                    type=file_type
+                ))
+                
+                logger.info(f"文件上传成功: {file.filename} ({file_size} bytes)")
+            
+            except Exception as e:
+                logger.error(f"文件保存失败: {e}")
+                raise HTTPException(status_code=500, detail=f"文件保存失败: {str(e)}")
+        
+        if uploaded_files_info:
+            file_info_text = "\n".join([
+                f"- {f.original_name} ({f.type}, {f.size} bytes, ID: {f.file_id})"
+                for f in uploaded_files_info
+            ])
+            message = f"{message}\n\n[已上传文件]\n{file_info_text}"
+    
+    if stream:
         return StreamingResponse(
             stream_generator(
                 chat_agent=chat_agent,
-                user_id=request.user_id,
-                message=request.message,
-                conv_id=request.conversation_id
+                user_id=user_id,
+                message=message,
+                conv_id=conversation_id
             ),
             media_type="text/event-stream",
             headers={
@@ -109,10 +181,13 @@ def chat(
             }
         )
     else:
-        # 非流式返回（兼容旧接口）
         result = chat_agent.chat(
-            user_id=request.user_id,
-            message=request.message,
-            conv_id=request.conversation_id
+            user_id=user_id,
+            message=message,
+            conv_id=conversation_id
         )
+        
+        if uploaded_files_info:
+            result['uploaded_files'] = [f.model_dump() for f in uploaded_files_info]
+        
         return ChatResponse(**result)

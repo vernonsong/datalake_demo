@@ -1,6 +1,11 @@
 # 获取表列表
 
 DOC_GUARD: 2c1a6f7b9d5e4c13
+REQUIRES_CONFIRMATION: false
+
+## 说明
+
+本接口为查询操作，不会修改系统数据，无需用户确认。
 
 ## 接口信息
 

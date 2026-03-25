@@ -1,6 +1,11 @@
 # 获取调度列表
 
 DOC_GUARD: 4e9a1c0d7b2f43aa
+REQUIRES_CONFIRMATION: false
+
+## 说明
+
+本接口为查询操作，不会修改系统数据，无需用户确认。
 
 ## 接口信息
 

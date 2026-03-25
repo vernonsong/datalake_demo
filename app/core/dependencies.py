@@ -6,10 +6,15 @@
 """
 
 from functools import lru_cache
+from pathlib import Path
+import re
+import logging
 from deepagents import create_deep_agent
 from deepagents.backends import LocalShellBackend
 
 from app.config import get_config
+
+logger = logging.getLogger(__name__)
 
 
 class TokenProvider:
@@ -169,6 +174,70 @@ def get_llm():
     )
 
 
+def _resolve_doc_path(doc_path: str) -> Path:
+    """解析文档路径
+    
+    Args:
+        doc_path: 文档相对路径或绝对路径
+    
+    Returns:
+        解析后的Path对象
+    
+    Raises:
+        FileNotFoundError: 文档不存在
+    """
+    PROJECT_ROOT = Path(__file__).parent.parent.parent
+    
+    if doc_path.startswith('/'):
+        resolved = Path(doc_path)
+    else:
+        resolved = PROJECT_ROOT / doc_path
+    
+    if not resolved.exists():
+        raise FileNotFoundError(f"接口文档不存在: {resolved}")
+    
+    return resolved
+
+
+def _should_interrupt_platform_service(tool_call: dict) -> bool:
+    """判断platform_service调用是否需要中断
+    
+    通过读取接口文档中的REQUIRES_CONFIRMATION标记来判断
+    
+    Args:
+        tool_call: 工具调用信息，包含args等
+    
+    Returns:
+        True: 需要中断（需要用户确认）
+        False: 不需要中断（不需要确认）
+    """
+    args = tool_call.get("args", {})
+    doc_path = args.get("doc_path", "")
+    
+    if not doc_path:
+        logger.warning("platform_service调用缺少doc_path参数")
+        return False
+    
+    try:
+        resolved_path = _resolve_doc_path(doc_path)
+        
+        content = resolved_path.read_text(encoding="utf-8")
+        
+        match = re.search(r'REQUIRES_CONFIRMATION:\s*(true|false)', content, re.IGNORECASE)
+        
+        if match:
+            requires_confirmation = match.group(1).lower() == 'true'
+            logger.info(f"接口文档 {doc_path} REQUIRES_CONFIRMATION={requires_confirmation}")
+            return requires_confirmation
+        else:
+            logger.debug(f"接口文档 {doc_path} 未找到REQUIRES_CONFIRMATION标记，默认不需要确认")
+            return False
+    
+    except Exception as e:
+        logger.warning(f"读取接口文档失败: {doc_path}, 错误: {e}, 为安全起见默认需要确认")
+        return True
+
+
 @lru_cache()
 def get_deep_agent():
     """获取 DeepAgent 智能体（依赖注入）"""
@@ -183,7 +252,10 @@ def get_deep_agent():
     checkpointer = MemorySaver()
 
     from app.agents.tools.platform_tool import get_platform_tools
+    from app.agents.tools.batch_tool import get_batch_tools
+    
     platform_tools = get_platform_tools()
+    batch_tools = get_batch_tools()
 
     from app.core.system_prompt import SYSTEM_PROMPT
 
@@ -195,13 +267,16 @@ def get_deep_agent():
             str(PROJECT_ROOT / "skills/business-skill"),
             str(PROJECT_ROOT / "skills/platform-skill"),
         ],
-        tools=platform_tools,
+        tools=platform_tools + batch_tools,
         interrupt_on={
                 "write_file": True,
                 "read_file": False,
                 "edit_file": False,
                 "execute_command": False,
-                "create_directory": False
+                "create_directory": False,
+                "platform_service": {
+                    "condition": _should_interrupt_platform_service
+                },
             },
         checkpointer=checkpointer,
     )

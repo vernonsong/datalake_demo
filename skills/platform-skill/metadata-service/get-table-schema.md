@@ -1,6 +1,11 @@
 # 获取表结构
 
 DOC_GUARD: f19b2a7c4e1d4d6f
+REQUIRES_CONFIRMATION: false
+
+## 说明
+
+本接口为查询操作，不会修改系统数据，无需用户确认。
 
 ## 接口信息
 
