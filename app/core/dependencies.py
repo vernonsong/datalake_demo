@@ -27,14 +27,20 @@ class DynamicHumanInTheLoopMiddleware(HumanInTheLoopMiddleware):
         self.dynamic_conditions = dynamic_conditions
 
     def after_model(self, state, runtime):
+        logger.info(f"[DynamicHITL] after_model 被调用")
+        
         # 检查是否有需要动态中断的工具调用
         messages = state["messages"]
         if not messages:
+            logger.info(f"[DynamicHITL] 没有消息，跳过")
             return None
             
         last_ai_msg = next((msg for msg in reversed(messages) if isinstance(msg, AIMessage)), None)
         if not last_ai_msg or not last_ai_msg.tool_calls:
+            logger.info(f"[DynamicHITL] 没有工具调用，跳过")
             return None
+
+        logger.info(f"[DynamicHITL] 发现 {len(last_ai_msg.tool_calls)} 个工具调用")
 
         # 动态更新 interrupt_on 配置
         current_interrupt_on = self.interrupt_on.copy()
@@ -54,17 +60,23 @@ class DynamicHumanInTheLoopMiddleware(HumanInTheLoopMiddleware):
                         self.interrupt_on[tool_name] = InterruptOnConfig(
                             allowed_decisions=["approve", "reject"]
                         )
-                        logger.info(f"[DynamicHITL] 已添加 {tool_name} 到中断配置")
+                        logger.info(f"[DynamicHITL] ✅ 已添加 {tool_name} 到中断配置")
                 except Exception as e:
                     logger.error(f"动态中断判断失败: {e}", exc_info=True)
+            else:
+                logger.debug(f"[DynamicHITL] {tool_name} 不在动态条件中")
         
         try:
             # 调用父类逻辑
             logger.info(f"[DynamicHITL] 当前 interrupt_on 配置: {list(self.interrupt_on.keys())}")
-            return super().after_model(state, runtime)
+            logger.info(f"[DynamicHITL] 调用父类 after_model")
+            result = super().after_model(state, runtime)
+            logger.info(f"[DynamicHITL] 父类 after_model 返回: {result}")
+            return result
         finally:
             # 恢复配置
             self.interrupt_on = current_interrupt_on
+            logger.info(f"[DynamicHITL] 已恢复 interrupt_on 配置")
 
 
 class TokenProvider:
@@ -324,6 +336,7 @@ def get_deep_agent():
     batch_tools = get_batch_tools()
 
     from app.core.system_prompt import SYSTEM_PROMPT
+    from app.core.subagents import ALL_SUBAGENTS
 
     # 静态中断配置
     static_interrupt_on = {
@@ -354,6 +367,7 @@ def get_deep_agent():
             str(PROJECT_ROOT / "skills/platform-skill"),
         ],
         tools=platform_tools + batch_tools,
+        subagents=ALL_SUBAGENTS,  # 注册子 Agent
         interrupt_on=None,  # 不使用内置的 HumanInTheLoopMiddleware
         middleware=[dynamic_middleware],  # 使用自定义的动态中间件
         checkpointer=checkpointer,

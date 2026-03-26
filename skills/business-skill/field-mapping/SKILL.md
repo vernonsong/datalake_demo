@@ -65,20 +65,6 @@ python3 skills/business-skill/field-mapping/mapping_script.py {单号}.csv
 - {单号}-mapped.csv：映射结果
 - {单号}-ddl.sql：DDL 建表语句
 
-#### 步骤 4：执行SQL
-读取上一步生成的DDL文件内容，并调用SQL服务执行建表语句。
-
-1. 读取DDL文件内容：
-```bash
-cat {单号}-ddl.sql
-```
-
-2. 调用SQL服务执行：
-遵循SQL服务接口说明，调用平台服务执行SQL。
-- `doc_path` 与 `doc_excerpt`（从SQL服务接口文档复制，包含 `DOC_GUARD:`）
-- `sql`: DDL文件内容
-- `database`: 目标数据库名
-
 ---
 
 ## 批量处理模式
@@ -122,59 +108,59 @@ python3 skills/common-tools/excel_parser.py <excel_file_path>
 }
 ```
 
-#### 步骤2：使用batch_process工具批量处理
+#### 步骤2：创建待办列表
 
-**关键**：使用系统提供的`batch_process`工具，它会为每个单号创建独立的子会话，避免上下文累积。
-
-调用示例：
+使用 TodoWrite 工具创建待办列表，每个订单一个待办项：
 
 ```python
-batch_process(
-    items='<解析Excel得到的JSON数组字符串>',
-    instruction_template='处理单号{单号}的字段映射，源库为{源库}，源表为{源表}，目标库为{目标库}，目标表为{目标表}',
-    batch_size=5
+TodoWrite(todos=[
+    {"id": "1", "content": "处理订单 ORDER001", "status": "pending", "priority": "high"},
+    {"id": "2", "content": "处理订单 ORDER002", "status": "pending", "priority": "high"},
+    ...
+])
+```
+
+#### 步骤3：逐个处理订单
+
+对于每个订单：
+
+1. **标记待办为 in_progress**
+2. **调用 task 工具**，委托给 field-mapping 子 Agent：
+
+```python
+task(
+    subagent_type="field-mapping",
+    query="处理单号 ORDER001 的字段映射，源库为 source_db，源表为 order_info，目标库为 target_db，目标表为 dw_order"
 )
 ```
 
-**重要说明**：
-- `items`: 将解析Excel得到的data数组转为JSON字符串
-- `instruction_template`: 处理指令模板，使用花括号引用Excel列名
-- `batch_size`: 每批处理数量，默认5个（超过会分批）
+3. **子 Agent 处理**：
+   - 在独立上下文中执行字段映射
+   - 如果需要执行 SQL，会触发用户确认
+   - 用户确认后，继续执行
+   - 返回处理结果
 
-#### 步骤3：解读批量处理结果
+4. **标记待办为 completed**
 
-`batch_process`工具会返回详细的处理结果：
+5. **继续下一个订单**
 
-```json
-{
-  "success": true,
-  "status": "completed",
-  "total": 3,
-  "success_count": 2,
-  "fail_count": 1,
-  "results": [
-    {
-      "index": 1,
-      "item": {"单号": "ORDER001", ...},
-      "status": "success",
-      "response": "..."
-    },
-    ...
-  ]
-}
-```
+#### 步骤4：生成汇总报告
 
-根据结果向用户展示汇总信息。
+所有订单处理完成后，生成汇总报告：
+- 总计订单数
+- 成功订单数
+- 失败订单数
+- 每个订单的处理结果
 
 ---
 
 ## 批量处理优势
 
-1. **独立上下文**：每个单号在独立的子会话中处理，互不干扰
-2. **避免累积**：不会因为处理大量单号导致上下文爆炸
-3. **通用能力**：`batch_process`工具可用于任何需要批量处理的场景
-4. **自动分批**：超过batch_size会自动分批处理
-5. **详细结果**：返回每个项目的处理状态和结果
+1. **独立上下文**：每个订单在独立的子 Agent 中处理，互不干扰
+2. **中断传递**：子 Agent 的中断会自动传播到主 Agent，支持一单一单确认
+3. **进度可见**：使用 TodoWrite 展示处理进度
+4. **灵活控制**：用户可以在任何时候拒绝某个订单的操作
+5. **框架原生**：使用 DeepAgents 的 SubAgent 机制，稳定可靠
 
 ---
 

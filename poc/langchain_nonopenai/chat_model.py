@@ -1,10 +1,10 @@
 import json
-from typing import Any, Callable, Dict, List, Optional, Sequence
+from typing import Any, Callable, Dict, Iterator, List, Optional, Sequence
 
 import requests
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
-from langchain_core.outputs import ChatGeneration, ChatResult
+from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 from langchain_core.utils.function_calling import convert_to_openai_tool
 
 
@@ -161,3 +161,83 @@ class ProviderCompatibleChatModel(BaseChatModel):
         if not merged:
             return None
         return merged
+
+    def _stream(
+        self,
+        messages: List[BaseMessage],
+        stop: Optional[List[str]] = None,
+        run_manager: Any = None,
+        **kwargs: Any,
+    ) -> Iterator[ChatGenerationChunk]:
+        payload: Dict[str, Any] = {
+            "model": self.model,
+            "messages": [self._to_provider_message(m) for m in messages],
+            "stream": True,
+        }
+        if stop:
+            payload["stop"] = stop
+
+        for key in ["temperature", "max_tokens", "top_p", "frequency_penalty", "presence_penalty"]:
+            if key in kwargs and kwargs[key] is not None:
+                payload[key] = kwargs[key]
+
+        explicit_tools = kwargs.pop("tools", None)
+        explicit_extrabody = kwargs.pop("extrabody", None)
+        bound_extrabody = kwargs.pop("extra_body", None)
+        extra_body = self._merge_extrabody(explicit_extrabody, bound_extrabody)
+        if explicit_tools is not None:
+            if extra_body is None:
+                extra_body = {}
+            extra_body["tools"] = explicit_tools
+        if extra_body is not None:
+            payload["extrabody"] = extra_body
+
+        token = self.token_provider()
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        }
+        response = requests.post(
+            self.base_url,
+            headers=headers,
+            json=payload,
+            timeout=self.timeout_seconds,
+            stream=True,
+        )
+        response.raise_for_status()
+
+        for line in response.iter_lines():
+            if not line:
+                continue
+            line_str = line.decode("utf-8")
+            if line_str.startswith("data: "):
+                line_str = line_str[6:]
+            if line_str.strip() == "[DONE]":
+                break
+            try:
+                chunk_data = json.loads(line_str)
+                if "choices" not in chunk_data or not chunk_data["choices"]:
+                    continue
+                choice = chunk_data["choices"][0]
+                delta = choice.get("delta", {})
+                content = delta.get("content", "")
+                tool_calls_delta = delta.get("tool_calls")
+                additional_kwargs: Dict[str, Any] = {}
+                tool_call_chunks = []
+                if tool_calls_delta:
+                    additional_kwargs["tool_calls"] = tool_calls_delta
+                    for tc_delta in tool_calls_delta:
+                        tool_call_chunks.append({
+                            "name": tc_delta.get("function", {}).get("name"),
+                            "args": tc_delta.get("function", {}).get("arguments", ""),
+                            "id": tc_delta.get("id"),
+                            "index": tc_delta.get("index"),
+                        })
+                chunk_message = AIMessageChunk(
+                    content=content,
+                    additional_kwargs=additional_kwargs,
+                    tool_call_chunks=tool_call_chunks if tool_call_chunks else None,
+                )
+                yield ChatGenerationChunk(message=chunk_message)
+            except json.JSONDecodeError:
+                continue
