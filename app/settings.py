@@ -1,45 +1,96 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import Optional
+from typing import Optional, Dict, Any
 import os
 
 
-class AppSettings:
+class ConfigSection:
+    """配置节基类"""
+    
+    def __init__(self, config: Dict[str, Any], section_name: str):
+        self._config = config
+        self._section_name = section_name
+    
+    def _get(self, key: str, default: Any = None) -> Any:
+        return self._config.get(self._section_name, {}).get(key, default)
+
+
+class AppConfig(ConfigSection):
     """应用配置"""
-    APP_NAME: str
-    APP_VERSION: str
-    DEBUG: bool
-    ENV: str
+    
+    @property
+    def name(self) -> str:
+        return self._get("name")
+    
+    @property
+    def version(self) -> str:
+        return self._get("version")
+    
+    @property
+    def debug(self) -> bool:
+        return self._get("debug", False)
 
 
-class ServerSettings:
+class ServerConfig(ConfigSection):
     """服务配置"""
-    HOST: str
-    PORT: int
+    
+    @property
+    def host(self) -> str:
+        return self._get("host")
+    
+    @property
+    def port(self) -> int:
+        return self._get("port")
 
 
-class MockServiceSettings:
+class MockServiceConfig(ConfigSection):
     """Mock服务配置"""
-    MOCK_SERVICE_URL: str
-    MOCK_API_SECRET: str
+    
+    @property
+    def url(self) -> str:
+        return self._get("url")
+    
+    @property
+    def api_secret(self) -> str:
+        return self._get("api_secret")
 
 
-class JwtSettings:
+class JwtConfig(ConfigSection):
     """JWT配置"""
-    JWT_SECRET: str
+    
+    @property
+    def secret(self) -> str:
+        return self._get("secret")
 
 
-class AliCloudSettings:
+class AliCloudConfig(ConfigSection):
     """阿里云配置"""
-    ALI_API_KEY: Optional[str] = None
+    
+    @property
+    def api_key(self) -> Optional[str]:
+        return self._get("api_key")
 
 
-class FileUploadSettings:
+class FileUploadConfig(ConfigSection):
     """文件上传配置"""
-    ENABLED: bool
-    MAX_SIZE: int
-    ALLOWED_EXTENSIONS: list[str]
-    TEMP_DIR: str
-    CLEANUP_HOURS: int
+    
+    @property
+    def enabled(self) -> bool:
+        return self._get("enabled", False)
+    
+    @property
+    def max_size(self) -> int:
+        return self._get("max_size")
+    
+    @property
+    def allowed_extensions(self) -> list[str]:
+        return self._get("allowed_extensions", [])
+    
+    @property
+    def temp_dir(self) -> str:
+        return self._get("temp_dir")
+    
+    @property
+    def cleanup_hours(self) -> int:
+        return self._get("cleanup_hours")
 
 
 class Settings:
@@ -49,95 +100,134 @@ class Settings:
         from dotenv import load_dotenv
         load_dotenv()
 
-        self.app = AppSettings()
-        self.app.APP_NAME = os.getenv("APP_NAME")
-        self.app.APP_VERSION = os.getenv("APP_VERSION")
-        debug_str = os.getenv("DEBUG")
-        self.app.DEBUG = debug_str.lower() == "true" if debug_str else False
-        self.app.ENV = os.getenv("ENV")
+        self._env = os.getenv("ENV")
+        if not self._env:
+            raise ValueError("ENV environment variable is required")
 
-        self.server = ServerSettings()
-        self.server.HOST = os.getenv("HOST")
-        self.server.PORT = int(os.getenv("PORT"))
+        self._config: Optional[Dict[str, Any]] = None
+        self._app: Optional[AppConfig] = None
+        self._server: Optional[ServerConfig] = None
+        self._mock_service: Optional[MockServiceConfig] = None
+        self._jwt: Optional[JwtConfig] = None
+        self._ali_cloud: Optional[AliCloudConfig] = None
+        self._file_upload: Optional[FileUploadConfig] = None
 
-        self.mock_service = MockServiceSettings()
-        self.mock_service.MOCK_SERVICE_URL = os.getenv("MOCK_SERVICE_URL")
-        self.mock_service.MOCK_API_SECRET = os.getenv("MOCK_API_SECRET")
-
-        self.jwt = JwtSettings()
-        self.jwt.JWT_SECRET = os.getenv("JWT_SECRET")
-
-        self.ali_cloud = AliCloudSettings()
-        self.ali_cloud.ALI_API_KEY = os.getenv("ALI_API_KEY")
-
-        self.file_upload = FileUploadSettings()
-        enabled_str = os.getenv("FILE_UPLOAD_ENABLED")
-        self.file_upload.ENABLED = enabled_str.lower() == "true" if enabled_str else False
-        self.file_upload.MAX_SIZE = int(os.getenv("FILE_UPLOAD_MAX_SIZE"))
-        extensions_str = os.getenv("FILE_UPLOAD_ALLOWED_EXTENSIONS")
-        self.file_upload.ALLOWED_EXTENSIONS = [ext.strip() for ext in extensions_str.split(",")] if extensions_str else []
-        self.file_upload.TEMP_DIR = os.getenv("FILE_UPLOAD_TEMP_DIR")
-        self.file_upload.CLEANUP_HOURS = int(os.getenv("FILE_UPLOAD_CLEANUP_HOURS"))
-
-    @property
-    def app_name(self) -> str:
-        return self.app.APP_NAME
-
-    @property
-    def app_version(self) -> str:
-        return self.app.APP_VERSION
-
-    @property
-    def debug(self) -> bool:
-        return self.app.DEBUG
+    def _load_config(self) -> Dict[str, Any]:
+        """加载配置"""
+        if self._config is None:
+            from app.config import get_config
+            from app.core.dependencies import get_token
+            
+            first_pass_config = get_config(env=self._env)
+            
+            config_service_url = first_pass_config.get("mock_service", {}).get("url")
+            config_service_token = get_token() if config_service_url else None
+            
+            if config_service_url:
+                self._config = get_config(
+                    env=self._env,
+                    config_service_url=config_service_url,
+                    config_service_token=config_service_token
+                )
+            else:
+                self._config = first_pass_config
+        return self._config
 
     @property
     def env(self) -> str:
-        return self.app.ENV
+        return self._env
+
+    @property
+    def app(self) -> AppConfig:
+        if self._app is None:
+            self._app = AppConfig(self._load_config(), "app")
+        return self._app
+
+    @property
+    def server(self) -> ServerConfig:
+        if self._server is None:
+            self._server = ServerConfig(self._load_config(), "server")
+        return self._server
+
+    @property
+    def mock_service(self) -> MockServiceConfig:
+        if self._mock_service is None:
+            self._mock_service = MockServiceConfig(self._load_config(), "mock_service")
+        return self._mock_service
+
+    @property
+    def jwt(self) -> JwtConfig:
+        if self._jwt is None:
+            self._jwt = JwtConfig(self._load_config(), "jwt")
+        return self._jwt
+
+    @property
+    def ali_cloud(self) -> AliCloudConfig:
+        if self._ali_cloud is None:
+            self._ali_cloud = AliCloudConfig(self._load_config(), "ali_cloud")
+        return self._ali_cloud
+
+    @property
+    def file_upload(self) -> FileUploadConfig:
+        if self._file_upload is None:
+            self._file_upload = FileUploadConfig(self._load_config(), "file_upload")
+        return self._file_upload
+
+    @property
+    def app_name(self) -> str:
+        return self.app.name
+
+    @property
+    def app_version(self) -> str:
+        return self.app.version
+
+    @property
+    def debug(self) -> bool:
+        return self.app.debug
 
     @property
     def host(self) -> str:
-        return self.server.HOST
+        return self.server.host
 
     @property
     def port(self) -> int:
-        return self.server.PORT
+        return self.server.port
 
     @property
     def mock_service_url(self) -> str:
-        return self.mock_service.MOCK_SERVICE_URL
+        return self.mock_service.url
 
     @property
     def mock_api_secret(self) -> str:
-        return self.mock_service.MOCK_API_SECRET
+        return self.mock_service.api_secret
 
     @property
     def jwt_secret(self) -> str:
-        return self.jwt.JWT_SECRET
+        return self.jwt.secret
 
     @property
     def ali_api_key(self) -> Optional[str]:
-        return self.ali_cloud.ALI_API_KEY
+        return self.ali_cloud.api_key
 
     @property
     def file_upload_enabled(self) -> bool:
-        return self.file_upload.ENABLED
+        return self.file_upload.enabled
 
     @property
     def file_upload_max_size(self) -> int:
-        return self.file_upload.MAX_SIZE
+        return self.file_upload.max_size
 
     @property
     def file_upload_allowed_extensions(self) -> list[str]:
-        return self.file_upload.ALLOWED_EXTENSIONS
+        return self.file_upload.allowed_extensions
 
     @property
     def file_upload_temp_dir(self) -> str:
-        return self.file_upload.TEMP_DIR
+        return self.file_upload.temp_dir
 
     @property
     def file_upload_cleanup_hours(self) -> int:
-        return self.file_upload.CLEANUP_HOURS
+        return self.file_upload.cleanup_hours
 
 
 settings = Settings()

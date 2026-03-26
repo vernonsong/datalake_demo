@@ -181,11 +181,19 @@ class ConfigManager:
         return value
 
 
-def get_config(config_dir: str = None) -> Dict[str, Any]:
+def get_config(
+    config_dir: str = None,
+    env: str = None,
+    config_service_url: str = None,
+    config_service_token: str = None
+) -> Dict[str, Any]:
     """获取配置的便捷函数
 
     Args:
         config_dir: 配置目录路径
+        env: 环境名称
+        config_service_url: 配置中心URL
+        config_service_token: 配置中心Token
 
     Returns:
         配置字典
@@ -193,15 +201,13 @@ def get_config(config_dir: str = None) -> Dict[str, Any]:
     if config_dir is None:
         config_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config")
 
-    from app.settings import settings
-    from app.core.dependencies import get_token
-
-    env = settings.env
+    if env is None:
+        env = os.getenv("ENV", "dev")
 
     config_manager = ConfigManager(
         config_dir=config_dir,
         env=env,
-        config_service_url=settings.mock_service_url,
-        config_service_token=get_token()
+        config_service_url=config_service_url,
+        config_service_token=config_service_token
     )
     return config_manager.load_config()

@@ -1,6 +1,31 @@
 app:
   name: 智能入湖平台
   version: 0.1.0
+  debug: false
+
+server:
+  host: 0.0.0.0
+  port: 8000
+
+mock_service:
+  url: http://localhost:5001
+  api_secret: ${mock_service.api_secret}
+
+jwt:
+  secret: ${jwt.secret}
+
+ali_cloud:
+  api_key: ${ali_cloud.api_key}
+
+file_upload:
+  enabled: true
+  max_size: 10485760
+  allowed_extensions:
+    - .xlsx
+    - .xls
+    - .csv
+  temp_dir: /tmp/datalake_uploads
+  cleanup_hours: 24
 
 database:
   host: ${database.host}

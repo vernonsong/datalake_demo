@@ -181,19 +181,36 @@ class TestDependencyInjection(unittest.TestCase):
     def test_token_provider(self):
         """测试Token提供者"""
         from app.core.dependencies import TokenProvider
-
-        provider = TokenProvider()
-        token = provider.get_token()
-        self.assertIsNotNone(token)
-        self.assertGreater(len(token), 0)
+        from unittest.mock import Mock, patch
+        
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"token": "test-token-123", "expires_in": 3600}
+        
+        with patch("requests.post", return_value=mock_response):
+            provider = TokenProvider()
+            token = provider.get_token()
+            self.assertIsNotNone(token)
+            self.assertGreater(len(token), 0)
+            self.assertEqual(token, "test-token-123")
 
     def test_get_token(self):
         """测试获取Token函数"""
-        from app.core.dependencies import get_token
-
-        token = get_token()
-        self.assertIsNotNone(token)
-        self.assertGreater(len(token), 0)
+        from app.core.dependencies import get_token, _token_provider
+        from unittest.mock import Mock, patch
+        
+        if _token_provider:
+            _token_provider.clear_token()
+        
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"token": "test-token-456", "expires_in": 3600}
+        
+        with patch("requests.post", return_value=mock_response):
+            token = get_token()
+            self.assertIsNotNone(token)
+            self.assertGreater(len(token), 0)
+            self.assertEqual(token, "test-token-456")
 
 
 class TestClientRequest(unittest.TestCase):

@@ -28,22 +28,28 @@ class TestAliApiKeyDependency(unittest.TestCase):
 
     def test_get_ali_api_key_missing(self):
         """测试ali_api_key缺失时报错"""
-        mock_client = Mock()
-        mock_client.get_value.return_value = None
-        with patch("app.config.ConfigServiceClient", return_value=mock_client):
-            with patch("app.core.dependencies.get_token", return_value="token"):
-                with patch("app.settings.settings.ali_cloud.ALI_API_KEY", None):
-                    with self.assertRaises(ValueError):
-                        dependencies.get_ali_api_key()
+        from app.settings import settings
+        mock_ali_cloud = Mock()
+        mock_ali_cloud.api_key = None
+        with patch.object(settings, '_ali_cloud', mock_ali_cloud):
+            with patch("app.config.ConfigServiceClient") as mock_client_class:
+                mock_client = Mock()
+                mock_client.get_value.return_value = None
+                mock_client_class.return_value = mock_client
+                with self.assertRaises(ValueError):
+                    dependencies.get_ali_api_key()
 
     def test_get_ali_api_key_fallback_to_env(self):
         """测试配置中心不可用时回退环境变量"""
-        mock_client = Mock()
-        mock_client.get_value.return_value = None
-        with patch("app.config.ConfigServiceClient", return_value=mock_client):
-            with patch("app.core.dependencies.get_token", return_value="token"):
-                with patch("app.settings.settings.ali_cloud.ALI_API_KEY", "env-ali-api-key"):
-                    result = dependencies.get_ali_api_key()
+        from app.settings import settings
+        mock_ali_cloud = Mock()
+        mock_ali_cloud.api_key = "env-ali-api-key"
+        with patch.object(settings, '_ali_cloud', mock_ali_cloud):
+            with patch("app.config.ConfigServiceClient") as mock_client_class:
+                mock_client = Mock()
+                mock_client.get_value.return_value = None
+                mock_client_class.return_value = mock_client
+                result = dependencies.get_ali_api_key()
         self.assertEqual(result, "env-ali-api-key")
 
 

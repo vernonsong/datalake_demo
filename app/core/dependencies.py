@@ -83,11 +83,20 @@ class TokenProvider:
     """Token提供者"""
 
     def __init__(self):
-        from app.settings import settings
-        self.base_url = settings.mock_service_url
-        self.secret = settings.mock_api_secret
         self._token = None
         self._expires_at = None
+        self._base_url = None
+        self._secret = None
+
+    def _ensure_config(self):
+        """延迟加载配置"""
+        if self._base_url is None or self._secret is None:
+            from app.config import get_config
+            import os
+            env = os.getenv("ENV", "dev")
+            config = get_config(env=env)
+            self._base_url = config.get("mock_service", {}).get("url")
+            self._secret = config.get("mock_service", {}).get("api_secret")
 
     def get_token(self) -> str:
         """获取Token"""
@@ -98,11 +107,16 @@ class TokenProvider:
         elif self._token and not self._expires_at:
             return self._token
 
+        self._ensure_config()
+        
+        if not self._base_url or not self._secret:
+            return ""
+
         try:
             import requests
             response = requests.post(
-                f"{self.base_url}/api/token",
-                json={"secret": self.secret},
+                f"{self._base_url}/api/token",
+                json={"secret": self._secret},
                 timeout=5
             )
             if response.status_code == 200:
