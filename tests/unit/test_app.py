@@ -26,8 +26,8 @@ class TestAppRoot(unittest.TestCase):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertEqual(data["service"], settings.app_name)
-        self.assertEqual(data["version"], settings.app_version)
+        self.assertEqual(data["service"], settings.app.name)
+        self.assertEqual(data["version"], settings.app.version)
         self.assertEqual(data["status"], "running")
 
 
@@ -52,19 +52,19 @@ class TestAppConfig(unittest.TestCase):
 
     def test_settings_has_app_name(self):
         """测试配置有app_name"""
-        self.assertEqual(settings.app_name, "智能入湖平台")
+        self.assertEqual(settings.app.name, "智能入湖平台")
 
     def test_settings_has_version(self):
         """测试配置有版本号"""
-        self.assertEqual(settings.app_version, "0.1.0")
+        self.assertEqual(settings.app.version, "0.1.0")
 
     def test_settings_has_mock_service_url(self):
         """测试配置有mock服务地址"""
-        self.assertIn("localhost", settings.mock_service_url)
+        self.assertIn("localhost", settings.mock_service.url)
 
     def test_settings_debug_default(self):
         """测试debug默认为True"""
-        self.assertTrue(settings.debug)
+        self.assertTrue(settings.app.debug)
 
 
 class TestAppSchemas(unittest.TestCase):

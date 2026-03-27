@@ -13,8 +13,8 @@ router = APIRouter()
 def root():
     """根路径"""
     return {
-        "service": settings.app_name,
-        "version": settings.app_version,
+        "service": settings.app.name,
+        "version": settings.app.version,
         "status": "running"
     }
 

@@ -228,7 +228,7 @@ def get_lake_service_client():
     """获取湖服务客户端（依赖注入）"""
     from app.core.clients.lake_service_client import LakeServiceClient
     from app.settings import settings
-    base_url = f"http://{settings.host}:{settings.port}"
+    base_url = f"http://{settings.server.host}:{settings.server.port}"
     return LakeServiceClient(
         base_url=base_url,
         token_provider=get_token
@@ -241,11 +241,11 @@ def get_ali_api_key() -> str:
     from app.settings import settings
 
     config_service = ConfigServiceClient(
-        base_url=settings.mock_service_url,
+        base_url=settings.mock_service.url,
         token=get_token()
     )
 
-    api_key = config_service.get_value("ali_api_key") or settings.ali_api_key
+    api_key = config_service.get_value("ali_api_key") or settings.ali_cloud.api_key
     if not api_key:
         raise ValueError("ali_api_key is required in config center or env")
     return api_key

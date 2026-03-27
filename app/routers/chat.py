@@ -24,13 +24,13 @@ class ResumeRequest(BaseModel):
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 file_validator = FileValidator(
-    allowed_extensions=settings.file_upload_allowed_extensions,
-    max_file_size=settings.file_upload_max_size
+    allowed_extensions=settings.file_upload.allowed_extensions,
+    max_file_size=settings.file_upload.max_size
 )
 
 file_storage = FileStorage(
-    temp_dir=settings.file_upload_temp_dir,
-    cleanup_after_hours=settings.file_upload_cleanup_hours
+    temp_dir=settings.file_upload.temp_dir,
+    cleanup_after_hours=settings.file_upload.cleanup_hours
 )
 
 
@@ -143,7 +143,7 @@ async def chat(
     
     uploaded_files_info = []
     
-    if files and settings.file_upload_enabled:
+    if files and settings.file_upload.enabled:
         if len(files) > 5:
             raise HTTPException(status_code=400, detail="单次最多上传5个文件")
         

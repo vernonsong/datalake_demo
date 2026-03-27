@@ -23,9 +23,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
-    title=settings.app_name,
+    title=settings.app.name,
     description="数据入湖平台的 API 服务",
-    version=settings.app_version,
+    version=settings.app.version,
     lifespan=lifespan
 )
 
