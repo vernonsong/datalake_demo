@@ -1,0 +1,4 @@
+source_field,source_type
+id,int
+name,string
+created_at,timestamp

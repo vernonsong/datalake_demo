@@ -1,0 +1,4 @@
+source_column,source_type,target_column,target_type,mapping_type
+id,int,id,int,direct
+name,string,name,string,direct
+created_at,timestamp,created_at,timestamp,direct

@@ -1,0 +1,221 @@
+{
+  "name": "field-mapping",
+  "version": "2.0.0",
+  "description": "字段映射工作流 - 将源表字段映射到目标湖表",
+  "metadata": {
+    "category": "scenario",
+    "author": "system",
+    "created_at": "2026-03-29",
+    "updated_at": "2026-03-29"
+  },
+  "parameters": {
+    "order_id": {
+      "type": "string",
+      "required": true,
+      "description": "订单号,用于生成文件名"
+    },
+    "source_db": {
+      "type": "string",
+      "required": true,
+      "description": "源数据库名"
+    },
+    "source_table": {
+      "type": "string",
+      "required": true,
+      "description": "源表名"
+    },
+    "target_db": {
+      "type": "string",
+      "required": true,
+      "description": "目标数据库类型",
+      "enum": ["clickhouse", "hudi"]
+    },
+    "target_table": {
+      "type": "string",
+      "required": true,
+      "description": "目标表名"
+    }
+  },
+  "outputs": {
+    "csv_file": {
+      "type": "string",
+      "description": "源表字段CSV文件路径"
+    },
+    "mapped_csv_file": {
+      "type": "string",
+      "description": "映射结果CSV文件路径"
+    },
+    "ddl_file": {
+      "type": "string",
+      "description": "DDL文件路径"
+    },
+    "ddl_content": {
+      "type": "string",
+      "description": "DDL语句内容"
+    }
+  },
+  "nodes": [
+    {
+      "id": "get_source_schema",
+      "name": "获取源表结构",
+      "type": "tool",
+      "tool": {
+        "name": "platform_service",
+        "params": {
+          "platform": "metadata",
+          "method": "GET",
+          "endpoint": "/api/metadata/tables/{source_db}/{source_table}/schema",
+          "doc_path": "skills/platform-skill/metadata-service/get-table-schema.md",
+          "doc_excerpt": "DOC_GUARD: metadata_get_table_schema"
+        }
+      },
+      "progress": {
+        "started": "正在获取源表结构",
+        "completed": "源表结构获取成功",
+        "failed": "源表结构获取失败"
+      },
+      "inputs": ["source_db", "source_table"],
+      "outputs": ["source_schema"]
+    },
+    {
+      "id": "generate_csv",
+      "name": "生成CSV文件",
+      "type": "script",
+      "script": "scripts/generate_csv.py",
+      "progress": {
+        "started": "正在生成CSV文件",
+        "completed": "CSV文件生成成功",
+        "failed": "CSV文件生成失败"
+      },
+      "inputs": ["order_id", "source_schema"],
+      "outputs": ["csv_file"]
+    },
+    {
+      "id": "run_mapping",
+      "name": "运行映射脚本",
+      "type": "script",
+      "script": "scripts/run_mapping.py",
+      "progress": {
+        "started": "正在运行映射脚本",
+        "completed": "映射脚本执行成功",
+        "failed": "映射脚本执行失败"
+      },
+      "inputs": ["csv_file", "order_id"],
+      "outputs": ["mapped_csv_file", "ddl_file"]
+    },
+    {
+      "id": "read_ddl",
+      "name": "读取DDL内容",
+      "type": "script",
+      "script": "scripts/read_ddl.py",
+      "progress": {
+        "started": "正在读取DDL内容",
+        "completed": "DDL内容读取成功",
+        "failed": "DDL内容读取失败"
+      },
+      "inputs": ["ddl_file"],
+      "outputs": ["ddl_content"]
+    },
+    {
+      "id": "check_ddl_valid",
+      "name": "检查DDL是否有效",
+      "type": "script",
+      "script": "scripts/check_ddl_valid.py",
+      "progress": {
+        "started": "正在检查DDL有效性",
+        "completed": "DDL检查完成",
+        "failed": "DDL检查失败"
+      },
+      "inputs": ["ddl_content"],
+      "outputs": ["is_valid", "validation_message"]
+    },
+    {
+      "id": "human_review",
+      "name": "人工审批",
+      "type": "human",
+      "progress": {
+        "started": "等待人工审批",
+        "completed": "审批通过",
+        "failed": "审批拒绝"
+      },
+      "inputs": ["ddl_content", "validation_message"],
+      "outputs": ["approved", "review_comment"]
+    },
+    {
+      "id": "validate",
+      "name": "验证结果",
+      "type": "script",
+      "script": "scripts/validate.py",
+      "progress": {
+        "started": "正在验证结果",
+        "completed": "验证通过,工作流执行完成",
+        "failed": "验证失败"
+      },
+      "inputs": ["csv_file", "mapped_csv_file", "ddl_file", "ddl_content"],
+      "outputs": []
+    }
+  ],
+  "edges": [
+    {
+      "from": "get_source_schema",
+      "to": "generate_csv",
+      "type": "normal"
+    },
+    {
+      "from": "generate_csv",
+      "to": "run_mapping",
+      "type": "normal"
+    },
+    {
+      "from": "run_mapping",
+      "to": "read_ddl",
+      "type": "normal"
+    },
+    {
+      "from": "read_ddl",
+      "to": "check_ddl_valid",
+      "type": "normal"
+    },
+    {
+      "from": "check_ddl_valid",
+      "to": "human_review",
+      "type": "conditional",
+      "condition": {
+        "field": "is_valid",
+        "operator": "==",
+        "value": false
+      }
+    },
+    {
+      "from": "check_ddl_valid",
+      "to": "validate",
+      "type": "conditional",
+      "condition": {
+        "field": "is_valid",
+        "operator": "==",
+        "value": true
+      }
+    },
+    {
+      "from": "human_review",
+      "to": "validate",
+      "type": "conditional",
+      "condition": {
+        "field": "approved",
+        "operator": "==",
+        "value": true
+      }
+    },
+    {
+      "from": "human_review",
+      "to": "__end__",
+      "type": "conditional",
+      "condition": {
+        "field": "approved",
+        "operator": "==",
+        "value": false
+      }
+    }
+  ],
+  "entry_point": "get_source_schema"
+}
