@@ -241,7 +241,7 @@ def get_ali_api_key() -> str:
     from app.settings import settings
 
     config_service = ConfigServiceClient(
-        base_url=settings.mock_service.url,
+        base_url=settings.mock_service_url,
         token=get_token()
     )
 
@@ -343,11 +343,16 @@ def get_deep_agent():
     llm = get_llm()
     checkpointer = MemorySaver()
 
+    from app.workflows.loader import load_all_workflows
+    load_all_workflows()
+    
     from app.agents.tools.platform_tool import get_platform_tools
     from app.agents.tools.batch_tool import get_batch_tools
+    from app.agents.tools.workflow_tool import get_workflow_tools
     
     platform_tools = get_platform_tools()
     batch_tools = get_batch_tools()
+    workflow_tools = get_workflow_tools()
 
     from app.core.system_prompt import SYSTEM_PROMPT
     from app.core.subagents import ALL_SUBAGENTS
@@ -380,7 +385,7 @@ def get_deep_agent():
             str(PROJECT_ROOT / "skills/business-skill"),
             str(PROJECT_ROOT / "skills/platform-skill"),
         ],
-        tools=platform_tools + batch_tools,
+        tools=platform_tools + batch_tools + workflow_tools,
         subagents=ALL_SUBAGENTS,  # 注册子 Agent
         interrupt_on=None,  # 不使用内置的 HumanInTheLoopMiddleware
         middleware=[dynamic_middleware],  # 使用自定义的动态中间件

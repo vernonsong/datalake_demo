@@ -51,7 +51,7 @@ def get_llm():
     from app.core.dependencies import get_token
 
     config_service = ConfigServiceClient(
-        base_url=settings.mock_service.url,
+        base_url=settings.mock_service_url,
         token=get_token()
     )
 

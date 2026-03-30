@@ -12,8 +12,8 @@ async def cleanup_files_task():
     from app.utils.file_storage import FileStorage
     
     file_storage = FileStorage(
-        temp_dir=settings.file_upload.temp_dir,
-        cleanup_after_hours=settings.file_upload.cleanup_hours
+        temp_dir=settings.file_upload_temp_dir,
+        cleanup_after_hours=settings.file_upload_cleanup_hours
     )
     
     while True:
@@ -28,10 +28,14 @@ async def cleanup_files_task():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
-    settings.app.debug and print(f"[{settings.app.name}] 服务启动...")
+    settings.debug and print(f"[{settings.app_name}] 服务启动...")
+    
+    # 加载工作流
+    from app.workflows.loader import load_all_workflows
+    load_all_workflows()
     
     cleanup_task = None
-    if settings.file_upload.enabled:
+    if settings.file_upload_enabled:
         cleanup_task = asyncio.create_task(cleanup_files_task())
         logger.info("文件清理后台任务已启动")
     
@@ -44,4 +48,4 @@ async def lifespan(app: FastAPI):
         except asyncio.CancelledError:
             logger.info("文件清理后台任务已停止")
     
-    settings.app.debug and print(f"[{settings.app.name}] 服务关闭...")
+    settings.debug and print(f"[{settings.app_name}] 服务关闭...")

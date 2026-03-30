@@ -1,8 +1,12 @@
 import os
 
+from deepagents import create_deep_agent
+from deepagents.backends import LocalShellBackend
 from langchain_core.tools import tool
 
+from app.core.system_prompt import SYSTEM_PROMPT
 from poc.langchain_nonopenai.chat_model import ProviderCompatibleChatModel
+from tests.poc_task_tool_direct import PROJECT_ROOT
 
 
 def dynamic_token_provider() -> str:
@@ -12,33 +16,48 @@ def dynamic_token_provider() -> str:
     return token
 
 
-@tool
-def add(a: int, b: int) -> int:
-    return a + b
 
 
-if __name__ == "__main__":
-    model = ProviderCompatibleChatModel(
-        base_url=os.environ["PROVIDER_CHAT_URL"],
-        model=os.environ["PROVIDER_MODEL"],
-        token_provider=dynamic_token_provider,
-        timeout_seconds=float(os.environ["PROVIDER_TIMEOUT_SECONDS"]),
-    )
-    runnable = model.bind_tools([add])
-    
-    print("=== 同步请求示例 ===")
-    first = runnable.invoke("请调用 add 工具计算 1+2，只返回结果")
-    print(first)
-    
-    print("\n=== 流式请求示例 ===")
-    for chunk in runnable.stream("请用中文介绍一下Python语言的特点"):
-        print(chunk.content, end="", flush=True)
-    print("\n")
-    
-    print("\n=== 流式请求 + 工具调用示例 ===")
-    for chunk in runnable.stream("请调用 add 工具计算 5+7"):
-        if chunk.content:
-            print(chunk.content, end="", flush=True)
-        if hasattr(chunk, 'tool_call_chunks') and chunk.tool_call_chunks:
-            print(f"\n[工具调用]: {chunk.tool_call_chunks}")
-    print("\n")
+import httpx
+from langchain_openai import ChatOpenAI
+
+class DynamicHeaderClient(httpx.Client):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def _get_dynamic_token(self):
+        # 此处编写获取动态token的逻辑
+        return "your-dynamic-token-here"
+
+    def send(self, request: httpx.Request, **kwargs):
+        # 动态更新 Authorization 头
+        request.headers["Authorization"] = f"Bearer {self._get_dynamic_token()}"
+        return super().send(request, **kwargs)
+
+# 初始化带有自定义客户端的模型
+llm = ChatOpenAI(
+    model="qwen3.5-plus",
+    temperature=0.01,
+    base_url="https://coding.dashscope.aliyuncs.com/v1",
+    api_key="sk-sp-0aa99843838b46729778fac5b6ff5e30",
+    http_client=DynamicHeaderClient()
+)
+
+
+agent = create_deep_agent(
+    model=llm,
+    system_prompt=SYSTEM_PROMPT,
+    backend=LocalShellBackend(root_dir=str(PROJECT_ROOT)),
+    skills=[
+
+    ]
+)
+print(agent.invoke({
+        "messages": [
+            {
+                "role": "user",
+                "content": "What is langgraph?",
+            }
+        ]
+    }))
+

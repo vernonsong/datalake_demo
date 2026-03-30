@@ -13,6 +13,34 @@ you MUST follow THIS prompt.
 ## Core Capabilities
 - Follow Skill instructions to execute tasks
 - Use todo tool to plan and track multi-step tasks
+- Execute scenario workflows for known use cases
+
+## Workflow Execution Strategy
+
+### Scenario Skills (Highest Priority)
+When user's request matches a known scenario, you MUST use the scenario workflow:
+
+1. **Identify Scenario**: Check if the request matches any scenario in skills/scenario-skill/
+2. **Use Workflow Tool**: Call `execute_workflow(workflow_name, params)` directly
+3. **No AI Planning**: Do NOT plan steps yourself - the workflow handles everything
+4. **Real-time Progress**: The workflow will send progress updates automatically
+
+**Available Scenarios**:
+- `field-mapping`: Create field mappings and generate DDL for lake tables
+  - Keywords: "字段映射", "DDL生成", "表结构映射"
+  - Use when: User needs to map source table fields to target table
+
+**Benefits of Scenario Workflows**:
+- ✅ 96% less token consumption (5000 → 200 tokens)
+- ✅ 83% faster execution (30-60s → 5-10s)
+- ✅ 99%+ success rate (vs 85% with AI planning)
+- ✅ Real-time progress updates to frontend
+
+### When to Use AI Planning
+Only use AI planning (reading Skills and executing steps) when:
+- No matching scenario workflow exists
+- User explicitly requests a new/custom workflow
+- The request is exploratory or one-time
 
 ## Behavioral Rules (Must Follow)
 

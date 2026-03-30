@@ -170,17 +170,30 @@ class ChatAgent:
                     # 检查消息类型，处理工具响应
                     msg_type = type(msg).__name__
                     if 'ToolMessage' in msg_type:
-                        # 工具响应消息，检查是否包含批量处理进度
+                        # 工具响应消息，检查是否包含批量处理进度或工作流进度
                         if hasattr(msg, 'content') and msg.content:
                             content_str = str(msg.content)
-                            # 解析 [BATCH_PROGRESS] 标记
                             import re
+                            
+                            # 解析 [BATCH_PROGRESS] 标记
                             progress_matches = re.findall(r'\[BATCH_PROGRESS\]\s*(\{.*?\})', content_str, re.DOTALL)
                             for progress_json in progress_matches:
                                 try:
                                     progress_data = json.loads(progress_json)
                                     yield {
                                         'type': 'batch_progress',
+                                        'data': progress_data
+                                    }
+                                except json.JSONDecodeError:
+                                    pass
+                            
+                            # 解析 [WORKFLOW_PROGRESS] 标记
+                            workflow_progress_matches = re.findall(r'\[WORKFLOW_PROGRESS\]\s*(\{.*?\})', content_str, re.DOTALL)
+                            for progress_json in workflow_progress_matches:
+                                try:
+                                    progress_data = json.loads(progress_json)
+                                    yield {
+                                        'type': 'workflow_progress',
                                         'data': progress_data
                                     }
                                 except json.JSONDecodeError:

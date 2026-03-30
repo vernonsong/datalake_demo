@@ -24,13 +24,13 @@ class ResumeRequest(BaseModel):
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 file_validator = FileValidator(
-    allowed_extensions=settings.file_upload.allowed_extensions,
-    max_file_size=settings.file_upload.max_size
+    allowed_extensions=settings.file_upload_allowed_extensions,
+    max_file_size=settings.file_upload_max_size
 )
 
 file_storage = FileStorage(
-    temp_dir=settings.file_upload.temp_dir,
-    cleanup_after_hours=settings.file_upload.cleanup_hours
+    temp_dir=settings.file_upload_temp_dir,
+    cleanup_after_hours=settings.file_upload_cleanup_hours
 )
 
 
