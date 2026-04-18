@@ -1,0 +1,25 @@
+{
+  "input_schema": {
+    "file_name": "str"
+  },
+  "nodes": [
+    {
+      "id": "read_file",
+      "type": "python_executor",
+      "config": {
+        "path": "xxxxx.py"
+      }
+    },
+    {
+      "id": "map_per_table",
+      "type": "map",
+      "config": {
+        "input": "${state.data.read_file}",
+        "sub_workflow": "xxxxx.json"
+      }
+    }
+  ],
+  "edges": [
+    {"from": "read_file", "to":  "map_per_table"}
+  ]
+}

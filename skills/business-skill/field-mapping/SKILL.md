@@ -71,7 +71,7 @@ python3 skills/business-skill/field-mapping/mapping_script.py {单号}.csv
 
 ### 触发条件
 
-当检测到用户上传了Excel文件（.xlsx或.xls），且文件包含以下列时，自动进入批量处理模式：
+当检测到用户上传了Excel文件（.xlsx或.xls），且文件包含以下列时，或描述中提供了多个单号，自动进入批量处理模式：
 
 | 必需列 | 说明 |
 |--------|------|

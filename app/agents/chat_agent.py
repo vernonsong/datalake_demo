@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 from datetime import datetime
 from uuid import uuid4
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +107,7 @@ class ChatAgent:
             conv_id=conversation_id
         )
 
-    def chat_stream(self, user_id: str, message: str, conv_id: Optional[str] = None):
+    async def chat_stream(self, user_id: str, message: str, conv_id: Optional[str] = None):
         """流式对话接口 - 同时返回 token 流、todos 和工具调用
         
         使用 LangGraph 的 stream API，支持：
@@ -145,26 +146,60 @@ class ChatAgent:
             last_todos = None
             initial_todos_captured = False
             last_phase = None
+            has_output = False
+            
+            from app.workflows.nodes.base import set_workflow_progress_callback
+            
+            workflow_progress_buffer = []
+            
+            def on_workflow_progress(progress_data: dict):
+                """工作流进度回调"""
+                workflow_progress_buffer.append(progress_data)
+                logger.info(f"🔔 收到工作流进度: {progress_data.get('node_name')} - {progress_data.get('status')}")
+            
+            set_workflow_progress_callback(on_workflow_progress)
+            logger.info("✅ 工作流进度回调已设置")
             
             # 使用 stream_mode="messages" 获取 token 级流式
             # 同时使用 stream_mode="values" 获取状态快照（包含 todos）
             tool_call_buffer = {}  # 缓存工具调用 chunks
             last_state = None  # 保存最后的状态，用于检查中断
             
-            for mode, chunk in self.agent.stream(
+            async for namespace, mode, data in self.agent.astream(
                 {"messages": deepagents_messages},
+                subgraphs=True,
                 config={"configurable": {"thread_id": thread_id}},
-                stream_mode=["messages", "values"],  # 同时获取 token 流和状态快照
+                stream_mode=["messages", "values", "updates"],  # 同时获取 token 流和状态快照
             ):
+                has_output = True
+                logger.info(f"🔄 Stream event: namespace={namespace}, mode={mode}, data_type={type(data)}")
+                
+                if mode == "updates":
+                    logger.debug(f"📦 Updates data: {data}")
+                    if workflow_progress_buffer:
+                        logger.info(f"📤 Yielding {len(workflow_progress_buffer)} workflow progress events")
+                        for progress_event in workflow_progress_buffer:
+                            yield {
+                                'type': 'workflow_progress',
+                                'workflow_name': progress_event.get('workflow_name'),
+                                'node_name': progress_event.get('node_name'),
+                                'status': progress_event.get('status'),
+                                'data': progress_event.get('data')
+                            }
+                        workflow_progress_buffer.clear()
+                
                 if mode == "messages":
-                    # token 级流式 - chunk 是 (message, metadata) 元组
-                    msg, metadata = chunk
+                    # token 级流式 - data 是 (message, metadata) 元组
+                    msg, metadata = data
+                    logger.info(f"📝 Message: type={type(msg).__name__}, has_content={hasattr(msg, 'content')}, content={getattr(msg, 'content', None)[:50] if hasattr(msg, 'content') and msg.content else None}")
                     
                     # 检查是否是工具响应（避免输出读取的文件内容）
                     if metadata and isinstance(metadata, dict):
                         node_name = metadata.get('langgraph_node', '')
+                        logger.info(f"🏷️ Node name: {node_name}")
                         # 如果是工具响应节点，跳过内容输出
                         if node_name in ['tool_responses', 'write_tool_response']:
+                            logger.info("⏭️ Skipping tool response node")
                             continue
                     
                     # 检查消息类型，处理工具响应
@@ -218,6 +253,7 @@ class ChatAgent:
                         continue
 
                     if hasattr(msg, 'content') and msg.content:
+                        logger.info(f"✅ Yielding token: {msg.content[:50]}")
                         # 如果有文本内容，且有缓存的工具调用，说明工具调用已结束（或穿插），先发送工具调用
                         if tool_call_buffer:
                             for idx in sorted(tool_call_buffer.keys()):
@@ -262,14 +298,16 @@ class ChatAgent:
                             tool_call_buffer.clear()
 
                         # 发送 token
+                        logger.info(f"🚀 About to yield token event")
                         yield {
                             'type': 'token',
                             'content': msg.content
                         }
+                        logger.info(f"✨ Token event yielded")
                 
                 elif mode == "values":
                     # 状态快照 - 获取 todos 等信息
-                    last_state = chunk  # 保存最后的状态
+                    last_state = data  # 保存最后的状态
                     
                     # 先清空并发送缓存的工具调用（确保在状态更新前发送）
                     if tool_call_buffer:
@@ -304,23 +342,84 @@ class ChatAgent:
                                 }
                         tool_call_buffer.clear()
 
-                    if isinstance(chunk, dict):
+                    if isinstance(data, dict):
                         # 检查 todos 状态
-                        todos = chunk.get("todos", [])
+                        todos = data.get("todos", [])
+                        
+                        # 将 Todo 对象转换为字典,并自动添加层级前缀
+                        todos_dict_list = []
+                        parent_todos = []
+                        child_todos = []
+                        
+                        for i, todo in enumerate(todos):
+                            if hasattr(todo, 'model_dump'):
+                                todo_dict = todo.model_dump()
+                            elif isinstance(todo, dict):
+                                todo_dict = todo.copy()
+                            else:
+                                try:
+                                    todo_dict = {
+                                        'id': getattr(todo, 'id', ''),
+                                        'content': getattr(todo, 'content', ''),
+                                        'status': getattr(todo, 'status', 'pending'),
+                                        'metadata': getattr(todo, 'metadata', {})
+                                    }
+                                except Exception as e:
+                                    logger.warning(f"转换 todo 对象失败: {e}")
+                                    continue
+                            
+                            content = todo_dict.get('content', '')
+                            
+                            # 检查是否已有前缀
+                            if content.startswith('📋'):
+                                parent_todos.append(todo_dict)
+                                todos_dict_list.append(todo_dict)
+                            elif content.lstrip().startswith('├─') or content.lstrip().startswith('└─'):
+                                child_todos.append(todo_dict)
+                                todos_dict_list.append(todo_dict)
+                            else:
+                                # 没有前缀,判断是否应该是子待办
+                                if parent_todos and not content.startswith('📋'):
+                                    # 自动添加子待办前缀
+                                    is_last = (i == len(todos) - 1)
+                                    prefix = '  └─ ' if is_last else '  ├─ '
+                                    todo_dict['content'] = f"{prefix}{content}"
+                                    child_todos.append(todo_dict)
+                                todos_dict_list.append(todo_dict)
+                        
+                        # 如果有父待办但没有子待办,自动为每个父待办添加一个默认子待办
+                        if parent_todos and not child_todos:
+                            enhanced_todos = []
+                            for parent in parent_todos:
+                                enhanced_todos.append(parent)
+                                # 根据父待办状态添加对应的子待办
+                                parent_status = parent.get('status', 'pending')
+                                if parent_status == 'completed':
+                                    enhanced_todos.append({
+                                        'content': '  └─ 任务已完成',
+                                        'status': 'completed'
+                                    })
+                                elif parent_status == 'in_progress':
+                                    enhanced_todos.append({
+                                        'content': '  └─ 正在处理...',
+                                        'status': 'in_progress'
+                                    })
+                            todos_dict_list = enhanced_todos if enhanced_todos else todos_dict_list
+                        
                         if not initial_todos_captured:
-                            last_todos = todos
+                            last_todos = todos_dict_list
                             initial_todos_captured = True
-                        elif todos and todos != last_todos:
+                        elif todos_dict_list and todos_dict_list != last_todos:
                             yield {
                                 'type': 'todos',
-                                'content': todos
+                                'content': todos_dict_list
                             }
-                            last_todos = todos
+                            last_todos = todos_dict_list
 
-                        if todos:
-                            if any(t.get('status') in ['pending', 'in_progress'] for t in todos if isinstance(t, dict)):
+                        if todos_dict_list:
+                            if any(t.get('status') in ['pending', 'in_progress'] for t in todos_dict_list if isinstance(t, dict)):
                                 phase = 'thinking'
-                            elif all(t.get('status') == 'completed' for t in todos if isinstance(t, dict)):
+                            elif all(t.get('status') == 'completed' for t in todos_dict_list if isinstance(t, dict)):
                                 phase = 'final'
                             else:
                                 phase = None
@@ -369,6 +468,15 @@ class ChatAgent:
                         }
                 tool_call_buffer.clear()
 
+            # 如果没有任何输出，说明可能出错了
+            if not has_output:
+                logger.warning("⚠️ 智能体没有产生任何输出，可能LLM调用失败")
+                yield {
+                    'type': 'error',
+                    'error': '智能体没有响应，请检查API Key配置或网络连接'
+                }
+                return
+            
             # 检查是否有中断
             if last_state and '__interrupt__' in last_state:
                 interrupt_data = last_state['__interrupt__']
@@ -419,3 +527,6 @@ class ChatAgent:
                 'type': 'error',
                 'error': str(e)
             }
+        finally:
+            from app.workflows.nodes.base import clear_workflow_progress_callback
+            clear_workflow_progress_callback()

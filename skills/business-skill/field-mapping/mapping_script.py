@@ -20,7 +20,7 @@ def load_source_fields(csv_path: str) -> list:
     return fields
 
 
-def load_mapping_template(template_path: str) -> dict:
+def load_mapping_template(template_path: str, source_db: str = '', source_table: str = '') -> dict:
     """加载映射规则模板"""
     template = {
         'source_db': '',
@@ -35,13 +35,28 @@ def load_mapping_template(template_path: str) -> dict:
         with open(template_path, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for row in reader:
-                # 读取第一行作为模板信息
-                if not template['source_db']:
-                    template['source_db'] = row.get('source_db', '')
-                    template['source_table'] = row.get('source_table', '')
-                    template['target_db'] = row.get('target_db', '')
-                    template['target_table'] = row.get('target_table', '')
-                    template['default_mapping_type'] = row.get('mapping_type', '直接映射')
+                # 如果提供了源库和源表名，尝试匹配对应的模板行
+                row_source_db = row.get('source_db', '')
+                row_source_table = row.get('source_table', '')
+                
+                # 匹配源表配置行（有 source_db 和 source_table 但没有 source_type）
+                if row_source_db and row_source_table and not row.get('source_type', ''):
+                    # 如果提供了源表信息且匹配，则使用此行
+                    if source_db and source_table:
+                        if row_source_db == source_db and row_source_table == source_table:
+                            template['source_db'] = row_source_db
+                            template['source_table'] = row_source_table
+                            template['target_db'] = row.get('target_db', '')
+                            template['target_table'] = row.get('target_table', '')
+                            template['default_mapping_type'] = row.get('mapping_type', '直接映射')
+                            break
+                    # 如果没有提供源表信息，使用第一行匹配的
+                    elif not template['source_db']:
+                        template['source_db'] = row_source_db
+                        template['source_table'] = row_source_table
+                        template['target_db'] = row.get('target_db', '')
+                        template['target_table'] = row.get('target_table', '')
+                        template['default_mapping_type'] = row.get('mapping_type', '直接映射')
                 
                 # 积累类型映射规则
                 source_type = row.get('source_type', '')
@@ -63,13 +78,25 @@ def generate_mappings(source_fields: list, template: dict) -> list:
     """根据源字段和模板生成完整映射"""
     mappings = []
     
+    # 从源字段中获取源库和源表信息（如果存在）
+    source_db = ''
+    source_table = ''
+    if source_fields and source_fields[0].get('source_db'):
+        source_db = source_fields[0]['source_db']
+        source_table = source_fields[0]['source_table']
+    
+    # 如果源字段中有源表信息，重新加载模板以匹配正确的目标表
+    if source_db and source_table:
+        template_path = 'skills/business-skill/field-mapping/模板.csv'
+        template = load_mapping_template(template_path, source_db, source_table)
+    
     for field in source_fields:
         source_type = field.get('source_type', '')
         target_type = template['type_mapping'].get(source_type, source_type)
         
         mapping = {
-            'source_db': template['source_db'],
-            'source_table': template['source_table'],
+            'source_db': template['source_db'] or source_db,
+            'source_table': template['source_table'] or source_table,
             'source_field': field.get('source_field', ''),
             'source_type': source_type,
             'target_db': template['target_db'],
@@ -158,13 +185,21 @@ def main():
     source_fields = load_source_fields(csv_path)
     print(f"Loaded {len(source_fields)} source fields from {csv_path}\n")
 
+    # 从 CSV 中获取源库和源表信息（如果存在）
+    source_db = ''
+    source_table = ''
+    if source_fields and 'source_db' in source_fields[0] and 'source_table' in source_fields[0]:
+        source_db = source_fields[0].get('source_db', '')
+        source_table = source_fields[0].get('source_table', '')
+        print(f"Detected source table: {source_db}.{source_table}\n")
+
     # 获取单号
     base_name = get_base_name(csv_path)
     output_dir = os.path.dirname(csv_path) or '.'
     
     # 加载映射规则模板
     template_path = os.path.join(os.path.dirname(__file__), '模板.csv')
-    template = load_mapping_template(template_path)
+    template = load_mapping_template(template_path, source_db, source_table)
     print(f"Loaded mapping template: {template['source_db']}.{template['source_table']} -> {template['target_db']}.{template['target_table']}\n")
 
     # 生成完整映射
