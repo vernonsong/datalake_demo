@@ -50,6 +50,108 @@ const spinAnimation = `
 `;
 
 /**
+ * 工作流进度组件
+ */
+function WorkflowProgress({ data }) {
+  const [isCollapsed, { toggle }] = useDisclosure(false);
+  
+  if (!data || !data.nodes || data.nodes.length === 0) {
+    return null;
+  }
+
+  const { workflow_name, nodes = [] } = data;
+  const completedCount = nodes.filter(node => node.status === 'completed').length;
+  const totalCount = nodes.length;
+  const percentage = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+  const currentNode = nodes.find(node => node.status === 'processing') || nodes[nodes.length - 1];
+
+  return (
+    <Box mb="xl" style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+      <Card 
+        padding="md" 
+        bg="#ffffff" 
+        withBorder
+        style={{ borderColor: '#7950f2', borderRadius: 8 }}
+      >
+        <UnstyledButton onClick={toggle} style={{ width: '100%' }}>
+          <Group justify="space-between" mb={isCollapsed ? 0 : 'sm'}>
+            <Group gap="xs">
+              <ThemeIcon variant="light" size="sm" color="violet">
+                {isCollapsed ? <IconChevronRight size={14} /> : <IconChevronDown size={14} />}
+              </ThemeIcon>
+              <Text size="sm" fw={600} c="violet.7">
+                🔄 工作流: {workflow_name}
+              </Text>
+              <Badge size="sm" color={completedCount === totalCount ? 'green' : 'violet'}>
+                {completedCount}/{totalCount}
+              </Badge>
+              <Text size="xs" c="dimmed">
+                {percentage}%
+              </Text>
+            </Group>
+            {currentNode && (
+              <Text size="xs" c="dimmed">
+                {currentNode.node_name}
+              </Text>
+            )}
+          </Group>
+        </UnstyledButton>
+
+        <Collapse in={!isCollapsed}>
+          <Stack gap="xs" mt="sm">
+            {nodes.map((node, index) => {
+              const isCompleted = node.status === 'completed';
+              const isProcessing = node.status === 'processing';
+              
+              let icon;
+              let color;
+              if (isProcessing) {
+                icon = <IconCircleDashed size={16} style={{ animation: 'spin 2s linear infinite' }} />;
+                color = 'violet.6';
+              } else if (isCompleted) {
+                icon = <IconCircleCheckFilled size={16} />;
+                color = 'green.6';
+              } else {
+                icon = <IconCircle size={16} />;
+                color = 'gray.5';
+              }
+
+              return (
+                <Box 
+                  key={index}
+                  p="sm"
+                  bg={isProcessing ? '#f3f0ff' : '#f8f9fa'}
+                  style={{ 
+                    borderRadius: 6,
+                    border: isProcessing ? '1px solid #7950f2' : '1px solid #dee2e6'
+                  }}
+                >
+                  <Group gap="sm" wrap="nowrap">
+                    <ThemeIcon variant="transparent" size="sm" c={color}>
+                      {icon}
+                    </ThemeIcon>
+                    <Box flex={1}>
+                      <Text size="sm" fw={500} c={isCompleted ? 'gray.7' : 'gray.9'}>
+                        {node.node_name}
+                      </Text>
+                      {node.step && (
+                        <Text size="xs" c="dimmed" mt={4}>
+                          步骤 {node.step}
+                        </Text>
+                      )}
+                    </Box>
+                  </Group>
+                </Box>
+              );
+            })}
+          </Stack>
+        </Collapse>
+      </Card>
+    </Box>
+  );
+}
+
+/**
  * 批量处理进度组件
  */
 function BatchProgress({ data }) {
@@ -176,6 +278,56 @@ function BatchProgress({ data }) {
 }
 
 /**
+ * 构建层级化的待办结构
+ * @param {Array} todos - 扁平的待办列表
+ * @returns {Array} 层级化的待办结构
+ */
+function buildTodoHierarchy(todos) {
+  if (!todos || todos.length === 0) {
+    return [];
+  }
+
+  const hierarchy = [];
+  let currentParent = null;
+
+  todos.forEach((todo) => {
+    const content = todo.content || '';
+    
+    // 检查是否是父待办 (以 📋 开头)
+    if (content.startsWith('📋')) {
+      const parentItem = {
+        ...todo,
+        content: content.replace('📋 ', '').trim(),
+        children: []
+      };
+      currentParent = parentItem;
+      hierarchy.push(parentItem);
+    }
+    // 检查是否是子待办 (以 ├─ 或 └─ 开头)
+    else if (content.match(/^\s*[├└]─\s*/)) {
+      const childItem = {
+        ...todo,
+        content: content.replace(/^\s*[├└]─\s*/, '').trim()
+      };
+      
+      if (currentParent) {
+        currentParent.children.push(childItem);
+      } else {
+        // 如果没有父待办,作为普通待办
+        hierarchy.push({ ...childItem, children: [] });
+      }
+    }
+    // 普通待办
+    else {
+      hierarchy.push({ ...todo, children: [] });
+      currentParent = null; // 重置当前父待办
+    }
+  });
+
+  return hierarchy;
+}
+
+/**
  * 思考过程组件（包含所有待办项和全局工具调用）
  */
 function ThinkingProcess({ data }) {
@@ -188,6 +340,8 @@ function ThinkingProcess({ data }) {
 
   const completedCount = data.todos?.filter(t => t.status === 'completed').length || 0;
   const totalCount = data.todos?.length || 0;
+  
+  const todoHierarchy = buildTodoHierarchy(data.todos || []);
 
   return (
     <Box mb="xl" style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}>
@@ -324,19 +478,20 @@ function ThinkingProcess({ data }) {
             );
           })}
 
-          {data.todos?.map((todo, index) => {
-            const isCompleted = todo.status === 'completed';
-            const isInProgress = todo.status === 'in_progress';
-            const isPending = todo.status === 'pending';
+          {todoHierarchy.map((parentTodo, parentIndex) => {
+            const isCompleted = parentTodo.status === 'completed';
+            const isInProgress = parentTodo.status === 'in_progress';
+            const isPending = parentTodo.status === 'pending';
             
-            const tools = (data.todoTools?.[index] || []).filter(t => t.todoIndex === index && t.name !== 'write_todos');
-            const files = (data.todoFiles?.[index] || []).filter(f => f.todoIndex === index);
-            const processText = (data.todoProcessText?.[index] || '').trim();
-            const timeline = data.todoTimeline?.[index] || [];
-            const hasChildren = tools.length > 0 || files.length > 0;
+            const originalIndex = data.todos?.findIndex(t => t.content === parentTodo.content) ?? parentIndex;
+            const tools = (data.todoTools?.[originalIndex] || []).filter(t => t.todoIndex === originalIndex && t.name !== 'write_todos');
+            const files = (data.todoFiles?.[originalIndex] || []).filter(f => f.todoIndex === originalIndex);
+            const processText = (data.todoProcessText?.[originalIndex] || '').trim();
+            const timeline = data.todoTimeline?.[originalIndex] || [];
+            const hasChildren = tools.length > 0 || files.length > 0 || (parentTodo.children && parentTodo.children.length > 0);
             
             return (
-              <Box key={index}>
+              <Box key={parentIndex}>
                 <Group wrap="nowrap" gap="sm" align="flex-start">
                   <Box mt={2}>
                     {isCompleted && <IconCircleCheckFilled size={18} color="#22c55e" />}
@@ -345,13 +500,37 @@ function ThinkingProcess({ data }) {
                   </Box>
                   <Box flex={1}>
                     <Group gap="xs" style={{ cursor: hasChildren ? 'pointer' : 'default' }}>
-                      <Text size="sm" c={isPending ? 'gray.5' : 'gray.9'}>
-                        {todo.content}
+                      <Text size="sm" c={isPending ? 'gray.5' : 'gray.9'} fw={parentTodo.children?.length > 0 ? 600 : 400}>
+                        {parentTodo.content}
                       </Text>
                       {hasChildren && (
                         <IconChevronDown size={14} color="#adb5bd" />
                       )}
                     </Group>
+                    
+                    {/* 渲染子待办 */}
+                    {parentTodo.children && parentTodo.children.length > 0 && (
+                      <Stack gap="xs" mt="xs" pl="md" style={{ borderLeft: '2px solid #e9ecef' }}>
+                        {parentTodo.children.map((childTodo, childIndex) => {
+                          const childCompleted = childTodo.status === 'completed';
+                          const childInProgress = childTodo.status === 'in_progress';
+                          const childPending = childTodo.status === 'pending';
+                          
+                          return (
+                            <Group key={childIndex} wrap="nowrap" gap="sm" align="flex-start">
+                              <Box mt={2}>
+                                {childCompleted && <IconCircleCheckFilled size={16} color="#22c55e" />}
+                                {childInProgress && <IconCircleDashed size={16} color="#adb5bd" style={{ animation: 'spin 2s linear infinite' }} />}
+                                {childPending && <IconCircle size={16} color="#ced4da" />}
+                              </Box>
+                              <Text size="sm" c={childPending ? 'gray.5' : 'gray.8'}>
+                                {childTodo.content}
+                              </Text>
+                            </Group>
+                          );
+                        })}
+                      </Stack>
+                    )}
                     
                     {/* Render executions timeline */}
                     {((timeline && timeline.length > 0) || processText || hasChildren) && (
@@ -590,6 +769,15 @@ function Message({ message }) {
     );
   }
 
+  const isWorkflowProgress = message.role === 'workflow_progress';
+  if (isWorkflowProgress) {
+    return (
+      <Box mb="lg">
+        <WorkflowProgress data={message.workflowData} />
+      </Box>
+    );
+  }
+
   return (
     <Group 
       align="flex-start" 
@@ -678,6 +866,9 @@ function Chat() {
   
   // 批量处理进度状态管理
   const batchProgressRef = useRef(null);
+  
+  // 工作流进度状态管理
+  const workflowProgressRef = useRef(null);
   
   // 中断状态管理
   const [pendingInterrupt, setPendingInterrupt] = useState(null); // { interrupt_info, thread_id, tool_call }
@@ -874,6 +1065,7 @@ function Chat() {
       lastTodoIndexRef.current = null;
       phaseRef.current = null;
       batchProgressRef.current = null;
+      workflowProgressRef.current = null;
 
       const updateThinkingMessage = (isRunning = true) => {
         const thinkingData = {
@@ -1084,6 +1276,74 @@ function Chat() {
             }
           }
           updateThinkingMessage();
+        } else if (event.type === 'workflow_progress') {
+          // 工作流进度事件
+          const { workflow_name, node_name, status, step } = event;
+          
+          if (!workflowProgressRef.current) {
+            workflowProgressRef.current = {
+              workflow_name: workflow_name,
+              nodes: []
+            };
+          }
+          
+          const existingIndex = workflowProgressRef.current.nodes.findIndex(
+            node => node.node_name === node_name
+          );
+          
+          if (existingIndex >= 0) {
+            workflowProgressRef.current.nodes[existingIndex] = {
+              node_name: node_name,
+              status: status,
+              step: step
+            };
+          } else {
+            workflowProgressRef.current.nodes.push({
+              node_name: node_name,
+              status: status,
+              step: step
+            });
+          }
+          
+          // 更新工作流进度消息
+          if (workflowProgressRef.current) {
+            setMessages(prev => {
+              // 查找最后一个用户消息的索引
+              let lastUserIndex = -1;
+              for (let i = prev.length - 1; i >= 0; i--) {
+                if (prev[i].role === 'user') {
+                  lastUserIndex = i;
+                  break;
+                }
+              }
+
+              // 查找最后一个工作流进度消息的索引
+              let lastWorkflowProgressIndex = -1;
+              for (let i = prev.length - 1; i >= 0; i--) {
+                if (prev[i].type === 'workflow_progress') {
+                  lastWorkflowProgressIndex = i;
+                  break;
+                }
+              }
+
+              const workflowProgressMessage = {
+                type: 'workflow_progress',
+                role: 'workflow_progress',
+                workflowData: { ...workflowProgressRef.current },
+                timestamp: new Date().toISOString(),
+              };
+
+              // 如果已存在工作流进度消息且在当前轮次，更新它
+              if (lastWorkflowProgressIndex >= 0 && lastWorkflowProgressIndex > lastUserIndex) {
+                const newMessages = [...prev];
+                newMessages[lastWorkflowProgressIndex] = workflowProgressMessage;
+                return newMessages;
+              } else {
+                // 否则，在最后一个用户消息之后插入新的工作流进度消息
+                return [...prev.slice(0, lastUserIndex + 1), workflowProgressMessage, ...prev.slice(lastUserIndex + 1)];
+              }
+            });
+          }
         } else if (event.type === 'batch_progress') {
           // 批量处理进度事件
           const progressData = event.data || {};

@@ -5,7 +5,9 @@
 """
 
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Iterator
+
+from langchain_core.outputs import ChatGenerationChunk
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
 from langchain_core.callbacks import CallbackManagerForLLMRun
@@ -43,3 +45,19 @@ class LogLLM(ChatOpenAI):
         print("\n" + "=" * 80 + "\n")
 
         return result
+
+    def _stream(self, messages: List[BaseMessage], stop: Optional[List[str]] = None, **kwargs: Any) -> Iterator[
+        ChatGenerationChunk]:
+        # 记录输入
+        print(f"\n--- [INPUT] ---\n{messages}")
+
+        # 收集流式输出的完整内容以便记录
+        full_response = ""
+
+        # 调用父类流式逻辑
+        for chunk in super()._stream(messages, stop=stop, **kwargs):
+            full_response += chunk.message.content
+            yield chunk
+
+        # 记录完整输出
+        print(f"\n--- [FULL OUTPUT] ---\n{full_response}\n")

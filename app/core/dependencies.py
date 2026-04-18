@@ -91,12 +91,16 @@ class TokenProvider:
     def _ensure_config(self):
         """延迟加载配置"""
         if self._base_url is None or self._secret is None:
-            from app.config import get_config
+            from pathlib import Path
+            from dotenv import load_dotenv
             import os
-            env = os.getenv("ENV", "dev")
-            config = get_config(env=env)
-            self._base_url = config.get("mock_service", {}).get("url")
-            self._secret = config.get("mock_service", {}).get("api_secret")
+            
+            # 直接从 .env 文件加载
+            env_file = Path(__file__).resolve().parents[3] / ".env"
+            load_dotenv(env_file)
+            
+            self._base_url = os.getenv("MOCK_SERVICE_URL", "http://localhost:5001")
+            self._secret = os.getenv("MOCK_API_SECRET")
 
     def get_token(self) -> str:
         """获取Token"""
@@ -236,18 +240,11 @@ def get_lake_service_client():
 
 
 def get_ali_api_key() -> str:
-    """从配置中心获取阿里云API Key"""
-    from app.config import ConfigServiceClient
-    from app.settings import settings
-
-    config_service = ConfigServiceClient(
-        base_url=settings.mock_service_url,
-        token=get_token()
-    )
-
-    api_key = config_service.get_value("ali_api_key") or settings.ali_cloud.api_key
+    """从环境变量获取阿里云API Key"""
+    import os
+    api_key = os.getenv("ALI_API_KEY")
     if not api_key:
-        raise ValueError("ali_api_key is required in config center or env")
+        raise ValueError("ALI_API_KEY environment variable is required")
     return api_key
 
 
@@ -261,7 +258,7 @@ def get_llm():
     return LogLLM(
         model="qwen3.5-plus",
         temperature=0.01,
-        base_url="https://coding.dashscope.aliyuncs.com/v1",
+        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
         api_key=api_key
     )
 
@@ -348,11 +345,12 @@ def get_deep_agent():
     
     from app.agents.tools.platform_tool import get_platform_tools
     from app.agents.tools.batch_tool import get_batch_tools
-    from app.agents.tools.workflow_tool import get_workflow_tools
+    from app.workflows.tool import execute_workflow
     
     platform_tools = get_platform_tools()
-    batch_tools = get_batch_tools()
-    workflow_tools = get_workflow_tools()
+    workflow_tools = [execute_workflow]
+    
+    all_tools = platform_tools + workflow_tools
 
     from app.core.system_prompt import SYSTEM_PROMPT
     from app.core.subagents import ALL_SUBAGENTS
@@ -385,10 +383,9 @@ def get_deep_agent():
             str(PROJECT_ROOT / "skills/business-skill"),
             str(PROJECT_ROOT / "skills/platform-skill"),
         ],
-        tools=platform_tools + batch_tools + workflow_tools,
-        subagents=ALL_SUBAGENTS,  # 注册子 Agent
-        interrupt_on=None,  # 不使用内置的 HumanInTheLoopMiddleware
-        middleware=[dynamic_middleware],  # 使用自定义的动态中间件
+        tools=all_tools,
+        interrupt_on=None,
+        middleware=[dynamic_middleware],
         checkpointer=checkpointer,
     )
 

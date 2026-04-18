@@ -12,11 +12,11 @@ class MockMetadataService:
     def __init__(self):
         self.databases = {
             "source_db": {
-                "tables": ["user_info", "product_info", "order_info"],
+                "tables": ["user_info", "product_info", "order_info", "test_table"],
                 "type": "mysql"
             },
             "target_db": {
-                "tables": ["dw_user", "dw_product", "dw_order"],
+                "tables": ["dw_user", "dw_product", "dw_order", "dw_test"],
                 "type": "hive"
             }
         }

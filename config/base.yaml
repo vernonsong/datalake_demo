@@ -9,13 +9,13 @@ server:
 
 mock_service:
   url: http://localhost:5001
-  api_secret: ${mock_service.api_secret}
+  api_secret: ${mock_api_secret}
 
 jwt:
-  secret: ${jwt.secret}
+  secret: ${jwt_secret}
 
 ali_cloud:
-  api_key: ${ali_cloud.api_key}
+  api_key: ${ali_api_key}
 
 file_upload:
   enabled: true

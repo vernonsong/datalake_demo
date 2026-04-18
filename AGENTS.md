@@ -95,6 +95,7 @@ pytest tests/
 - [API文档](docs/api/README.md)
 - [配置模块设计](docs/design/config_design.md)
 - [配置规范](docs/design/config_spec.md)
+- [DeepAgents工作流集成验证指南](docs/DeepAgents工作流集成验证指南.md) ⭐ 新增
 
 ## Change Rules
 

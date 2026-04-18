@@ -59,11 +59,11 @@ class ChatResponse(BaseModel):
     uploaded_files: Optional[List[UploadedFileInfo]] = None
 
 
-def stream_generator(chat_agent: ChatAgent, user_id: str, message: str, conv_id: Optional[str] = None):
+async def stream_generator(chat_agent: ChatAgent, user_id: str, message: str, conv_id: Optional[str] = None):
     """流式生成器 - 返回模型的每一步思考和行动"""
     try:
         # 使用流式接口获取模型的每一步输出
-        for event in chat_agent.chat_stream(user_id=user_id, message=message, conv_id=conv_id):
+        async for event in chat_agent.chat_stream(user_id=user_id, message=message, conv_id=conv_id):
             event_type = event.get('type', 'unknown')
             
             if event_type == 'token':
@@ -107,6 +107,10 @@ def stream_generator(chat_agent: ChatAgent, user_id: str, message: str, conv_id:
                 # 批量处理进度
                 progress_data = event.get('data', {})
                 yield f"data: {json.dumps({'type': 'batch_progress', 'data': progress_data}, ensure_ascii=False)}\n\n"
+            
+            elif event_type == 'workflow_progress':
+                # 工作流进度
+                yield f"data: {json.dumps({'type': 'workflow_progress', 'workflow_name': event.get('workflow_name'), 'node_name': event.get('node_name'), 'status': event.get('status'), 'data': event.get('data')}, ensure_ascii=False)}\n\n"
             
             elif event_type == 'interrupt':
                 # 中断事件 - 需要用户确认

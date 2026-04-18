@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core import lifespan
 from app.routers import router
 from app.routers import chat
+from app.routers import workflow
 from app.settings import settings
 
 os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -45,6 +46,7 @@ app.add_middleware(
 
 app.include_router(router)
 app.include_router(chat.router)
+app.include_router(workflow.router)
 
 logger.info("应用启动完成")
 
